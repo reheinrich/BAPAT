@@ -19,8 +19,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 # Import your existing classes
-from preprocessing.data_processing import DataProcessor
-from assessment.performance_assessor import PerformanceAssessor
+from bapat.preprocessing.data_processing import DataProcessor
+from bapat.assessment.performance_assessor import PerformanceAssessor
 
 # Disable interactive mode to avoid automatic figure creation
 plt.ioff()  # Add this line to disable the interactive mode

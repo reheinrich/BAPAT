@@ -26,7 +26,7 @@ jobs:
 
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.icns --clean --specpath .
+        pyinstaller bapat/app.py --name PerformanceApp --onedir --windowed --icon=app.icns --clean --specpath .
 
     - name: Upload executable
       uses: actions/upload-artifact@v3
