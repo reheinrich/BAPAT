@@ -4,6 +4,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   build:
@@ -26,8 +27,14 @@ jobs:
     - name: Build Universal Binary with PyInstaller
       working-directory: bapat
       run: |
-        # Build a universal binary supporting both x86_64 and arm64
-        ARCHFLAGS="-arch x86_64 -arch arm64" pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.icns --clean --specpath .
+        pyinstaller app.py \
+          --name PerformanceApp \
+          --onedir \
+          --windowed \
+          --icon=app.icns \
+          --clean \
+          --specpath . \
+          --target-arch universal2
 
     - name: Upload executable
       uses: actions/upload-artifact@v3
