@@ -23,10 +23,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Build executable with PyInstaller
+    - name: Build Universal Binary with PyInstaller
       working-directory: bapat
       run: |
-        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.icns --clean --specpath .
+        # Build a universal binary supporting both x86_64 and arm64
+        ARCHFLAGS="-arch x86_64 -arch arm64" pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.icns --clean --specpath .
 
     - name: Upload executable
       uses: actions/upload-artifact@v3
