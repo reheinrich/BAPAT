@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-arm64:
-    runs-on: macos-latest  # Specify macOS arm64 runner
+    runs-on: macos-13-arm64  # Specify macOS arm64 runner
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
