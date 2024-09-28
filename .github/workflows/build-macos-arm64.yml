@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-arm64:
-    runs-on: macos-14 #macos-latest  # Specify macOS arm64 runner
+    runs-on: macos-14  # Specify macOS arm64 runner
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
@@ -38,8 +38,13 @@ jobs:
           --specpath . \
           --target-arch arm64
 
+    - name: Compress the app
+      run: |
+        cd bapat/dist/
+        zip -r PerformanceApp-macOS-arm64.zip PerformanceApp.app
+
     - name: Upload executable
       uses: actions/upload-artifact@v3
       with:
         name: PerformanceApp-macOS-arm64
-        path: bapat/dist/
+        path: bapat/dist/PerformanceApp-macOS-arm64.zip

@@ -35,8 +35,13 @@ jobs:
           --specpath . \
           --target-arch x86_64
 
+    - name: Compress the app
+      run: |
+        cd bapat/dist/
+        zip -r PerformanceApp-macOS-x86_64.zip PerformanceApp.app
+
     - name: Upload executable
       uses: actions/upload-artifact@v3
       with:
         name: PerformanceApp-macOS-x86_64
-        path: bapat/dist/
+        path: bapat/dist/PerformanceApp-macOS-x86_64.zip
