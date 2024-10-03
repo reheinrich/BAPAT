@@ -1,35 +1,99 @@
-import sys
-import os
 import json
-
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QFileDialog, QSlider, QTextEdit,
-    QSpinBox, QDoubleSpinBox,
-    QToolButton, QGroupBox, QCheckBox, QLineEdit, QSizePolicy, QFormLayout, QGridLayout
-)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QPalette, QColor, QIcon
-from PySide6.QtWidgets import QComboBox, QStyle
+import os
+import sys
 
 import matplotlib
-matplotlib.use('QtAgg')  # Set the Matplotlib backend to QtAgg
-
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+import matplotlib.pyplot as plt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QLabel,
+    QFileDialog,
+    QSlider,
+    QTextEdit,
+    QSpinBox,
+    QDoubleSpinBox,
+    QToolButton,
+    QGroupBox,
+    QCheckBox,
+    QLineEdit,
+    QSizePolicy,
+    QFormLayout,
+    QGridLayout,
+    QComboBox,
+    QStyle,
+)
+from PySide6.QtGui import (
+    QFont,
+    QPalette,
+    QColor,
+    QStandardItemModel,
+)
 
-# Import your existing classes
-# from bapat.preprocessing.data_processing import DataProcessor
-# from bapat.assessment.performance_assessor import PerformanceAssessor
+from bapat.preprocessing.data_processing import DataProcessor
+from bapat.assessment.performance_assessor import PerformanceAssessor
 
-from preprocessing.data_processing import DataProcessor
-from assessment.performance_assessor import PerformanceAssessor
+
+matplotlib.use("QtAgg")  # Set the Matplotlib backend to QtAgg
+
 
 # Disable interactive mode to avoid automatic figure creation
 plt.ioff()  # Add this line to disable the interactive mode
 
+
+class CheckableComboBox(QComboBox):
+    # Signal emitted when the selection changes
+    checkedItemsChanged = Signal()
+
+    def __init__(self, parent=None):
+        super(CheckableComboBox, self).__init__(parent)
+        self.view().pressed.connect(self.handleItemPressed)
+        self.setModel(QStandardItemModel(self))
+
+    def handleItemPressed(self, index):
+        item = self.model().itemFromIndex(index)
+        if item.text() == "Select All":
+            # Toggle 'Select All' state
+            checked = item.checkState() != Qt.Checked
+            for i in range(self.count()):
+                item = self.model().item(i)
+                item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+        else:
+            # Update 'Select All' state
+            state = item.checkState()
+            item.setCheckState(Qt.Checked if state == Qt.Unchecked else Qt.Unchecked)
+            self.updateSelectAllState()
+        self.checkedItemsChanged.emit()
+
+    def updateSelectAllState(self):
+        select_all_item = self.model().item(0)
+        all_checked = True
+        for i in range(1, self.count()):
+            if self.model().item(i).checkState() != Qt.Checked:
+                all_checked = False
+                break
+        select_all_item.setCheckState(Qt.Checked if all_checked else Qt.Unchecked)
+
+    def checkedItems(self):
+        items = []
+        for i in range(1, self.count()):
+            item = self.model().item(i)
+            if item.checkState() == Qt.Checked:
+                items.append(item.text())
+        return items
+
+    def clearItems(self):
+        self.clear()
+
+
 class DropLineEdit(QLineEdit):
     """Custom QLineEdit that accepts drag-and-drop of files and folders."""
+
     def __init__(self, parent=None):
         super(DropLineEdit, self).__init__(parent)
         self.setAcceptDrops(True)
@@ -64,6 +128,7 @@ class PerformanceApp(QWidget):
         self.previous_min_overlap = None
         self.previous_columns_predictions = None
         self.previous_columns_annotations = None
+        self.previous_recording_duration = None
         self.processor = None
 
         self.init_ui()
@@ -85,22 +150,40 @@ class PerformanceApp(QWidget):
         file_inputs_layout.setSpacing(20)  # Add horizontal space between inputs
 
         # Annotations folder selection
-        annotation_tooltip = "Select the folder that contains the true labels for evaluation."
+        annotation_tooltip = (
+            "Select the folder that contains the true labels for evaluation."
+        )
         self.annotation_input = DropLineEdit()
         self.annotation_button = QPushButton("Browse")
         self.annotation_button.clicked.connect(self.select_annotation_folder)
-        self.annotation_input.textChanged.connect(self.on_annotation_path_changed)  # Connect signal
-        self.add_file_input("Annotations Folder:", self.annotation_input, self.annotation_button, annotation_tooltip,
-                            file_inputs_layout)
+        self.annotation_input.textChanged.connect(
+            self.on_annotation_path_changed
+        )  # Connect signal
+        self.add_file_input(
+            "Annotations Folder:",
+            self.annotation_input,
+            self.annotation_button,
+            annotation_tooltip,
+            file_inputs_layout,
+        )
 
         # Predictions folder selection
-        prediction_tooltip = "Select the folder that contains the model's prediction files."
+        prediction_tooltip = (
+            "Select the folder that contains the model's prediction files."
+        )
         self.prediction_input = DropLineEdit()
         self.prediction_button = QPushButton("Browse")
         self.prediction_button.clicked.connect(self.select_prediction_folder)
-        self.prediction_input.textChanged.connect(self.on_prediction_path_changed)  # Connect signal
-        self.add_file_input("Predictions Folder:", self.prediction_input, self.prediction_button, prediction_tooltip,
-                            file_inputs_layout)
+        self.prediction_input.textChanged.connect(
+            self.on_prediction_path_changed
+        )  # Connect signal
+        self.add_file_input(
+            "Predictions Folder:",
+            self.prediction_input,
+            self.prediction_button,
+            prediction_tooltip,
+            file_inputs_layout,
+        )
 
         self.file_selection_layout.addRow(file_inputs_layout)
 
@@ -110,7 +193,7 @@ class PerformanceApp(QWidget):
             "End Time": "End Time (s)",
             "Class": "Class",
             "Recording": "Begin File",
-            "Duration": "File Duration (s)"
+            "Duration": "File Duration (s)",
         }
 
         # Default columns for predictions
@@ -120,12 +203,14 @@ class PerformanceApp(QWidget):
             "Class": "Common Name",
             "Recording": "Begin File",
             "Duration": "File Duration (s)",
-            "Confidence": "Confidence"
+            "Confidence": "Confidence",
         }
 
         # Create a horizontal layout to contain both annotations and predictions columns
         columns_selection_layout = QHBoxLayout()
-        columns_selection_layout.setSpacing(20)  # Add spacing between annotations and predictions
+        columns_selection_layout.setSpacing(
+            20
+        )  # Add spacing between annotations and predictions
 
         # Annotations columns selection
         annotation_columns_layout = QVBoxLayout()
@@ -151,13 +236,15 @@ class PerformanceApp(QWidget):
             "End Time": "Select the column that contains the end time of the annotations.",
             "Class": "Select the column that contains the class labels of the annotations.",
             "Recording": "Select the column that contains the recording file name in the annotation files.",
-            "Duration": "Select the column that contains the duration of the recordings in the annotation files."
+            "Duration": "Select the column that contains the duration of the recordings in the annotation files.",
         }
 
         # Second Row: drop-down menus for annotations
         annotation_dropdowns_layout = QHBoxLayout()
         annotation_dropdowns_layout.setSpacing(5)
-        annotation_dropdowns_layout.setAlignment(Qt.AlignLeft)  # Left-align the combo boxes
+        annotation_dropdowns_layout.setAlignment(
+            Qt.AlignLeft
+        )  # Left-align the combo boxes
         self.annotation_column_dropdowns = {}
         for label_text in annotation_labels:
             combobox = QComboBox()
@@ -167,13 +254,15 @@ class PerformanceApp(QWidget):
             combobox.setFixedWidth(60)
             tooltip_text = annotation_tooltips.get(label_text, "")
             combobox.setToolTip(tooltip_text)
-            combobox.setStyleSheet("""
+            combobox.setStyleSheet(
+                """
                 QToolTip {
                     background-color: #2C3E50;
                     color: white;
                     border: 1px solid #1E3A5F;
                 }
-            """)
+            """
+            )
             self.annotation_column_dropdowns[label_text] = combobox
             annotation_dropdowns_layout.addWidget(combobox)
         annotation_columns_layout.addLayout(annotation_dropdowns_layout)
@@ -185,7 +274,14 @@ class PerformanceApp(QWidget):
         prediction_labels_layout = QHBoxLayout()
         prediction_labels_layout.setSpacing(5)
         prediction_labels_layout.setAlignment(Qt.AlignRight)  # Right-align the labels
-        prediction_labels = ["Start Time", "End Time", "Class", "Confidence", "Recording", "Duration"]
+        prediction_labels = [
+            "Start Time",
+            "End Time",
+            "Class",
+            "Confidence",
+            "Recording",
+            "Duration",
+        ]
         for label_text in prediction_labels:
             label = QLabel(label_text)
             label.setAlignment(Qt.AlignRight)  # Right-align the text within the label
@@ -203,13 +299,15 @@ class PerformanceApp(QWidget):
             "Class": "Select the column that contains the class labels of the predictions.",
             "Confidence": "Select the column that contains the confidence scores of the predictions.",
             "Recording": "Select the column that contains the recording file name in the prediction files.",
-            "Duration": "Select the column that contains the duration of the recordings in the prediction files."
+            "Duration": "Select the column that contains the duration of the recordings in the prediction files.",
         }
 
         # Second Row: drop-down menus for predictions
         prediction_dropdowns_layout = QHBoxLayout()
         prediction_dropdowns_layout.setSpacing(5)
-        prediction_dropdowns_layout.setAlignment(Qt.AlignRight)  # Right-align the combo boxes
+        prediction_dropdowns_layout.setAlignment(
+            Qt.AlignRight
+        )  # Right-align the combo boxes
         self.prediction_column_dropdowns = {}
         for label_text in prediction_labels:
             combobox = QComboBox()
@@ -219,13 +317,15 @@ class PerformanceApp(QWidget):
             combobox.setFixedWidth(60)
             tooltip_text = prediction_tooltips.get(label_text, "")
             combobox.setToolTip(tooltip_text)
-            combobox.setStyleSheet("""
+            combobox.setStyleSheet(
+                """
                 QToolTip {
                     background-color: #2C3E50;
                     color: white;
                     border: 1px solid #1E3A5F;
                 }
-            """)
+            """
+            )
             self.prediction_column_dropdowns[label_text] = combobox
             prediction_dropdowns_layout.addWidget(combobox)
         prediction_columns_layout.addLayout(prediction_dropdowns_layout)
@@ -248,27 +348,31 @@ class PerformanceApp(QWidget):
         # Create the download button
         self.download_mapping_button = QPushButton("Download Template")
         self.download_mapping_button.setFixedWidth(150)
-        self.download_mapping_button.clicked.connect(self.download_class_mapping_template)
+        self.download_mapping_button.clicked.connect(
+            self.download_class_mapping_template
+        )
         self.download_mapping_button.setToolTip(
-            "Click to download a template JSON file to map class names between predictions and annotations. Use this if class names differ between your prediction and annotation files.")
-        self.download_mapping_button.setStyleSheet("""
+            "Click to download a template JSON file to map class names between predictions and annotations. Use this if class names differ between your prediction and annotation files."
+        )
+        self.download_mapping_button.setStyleSheet(
+            """
             QToolTip {
                 background-color: #2C3E50;  /* Darker background */
                 color: white;  /* White text */
                 border: 1px solid #1E3A5F;
             }
-        """)
+        """
+        )
 
-        # Center the class mapping input
-        mapping_layout = QHBoxLayout()
-        mapping_layout.addWidget(self.download_mapping_button)
-        mapping_layout.addStretch()
-        label = QLabel("Class Mapping (Optional):")
-        label.setAlignment(Qt.AlignCenter)
-        tooltip_button = QToolButton()
-        tooltip_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
-        tooltip_button.setToolTip(class_mapping_tooltip)
-        tooltip_button.setStyleSheet("""
+        # Class Mapping Label and Input
+        mapping_label = QLabel("Class Mapping (Optional):")
+        mapping_tooltip_button = QToolButton()
+        mapping_tooltip_button.setIcon(
+            self.style().standardIcon(QStyle.SP_MessageBoxInformation)
+        )
+        mapping_tooltip_button.setToolTip(class_mapping_tooltip)
+        mapping_tooltip_button.setStyleSheet(
+            """
             QToolButton:hover {
                 background-color: #294C7D;  /* Lighter blue when hovered */
             }
@@ -277,12 +381,54 @@ class PerformanceApp(QWidget):
                 color: white;  /* White text for the tooltip */
                 border: 1px solid #1E3A5F;
             }
-        """)
-        mapping_layout.addWidget(label)
-        mapping_layout.addWidget(tooltip_button)
-        mapping_layout.addWidget(self.mapping_input)
-        mapping_layout.addWidget(self.mapping_button)
+        """
+        )
+
+        # Select Classes Label and ComboBox
+        select_classes_label = QLabel("Select Classes:")
+        self.select_classes_combobox = CheckableComboBox()
+        self.select_classes_combobox.setFixedWidth(200)
+        self.select_classes_combobox.checkedItemsChanged.connect(
+            self.reset_results
+        )  # Connect signal
+        # Add tooltip to the select_classes_combobox
+        self.select_classes_combobox.setToolTip(
+            "Select the classes for which you want to calculate the metrics."
+        )
+        self.select_classes_combobox.setStyleSheet(
+            """
+            QToolTip {
+                background-color: #2C3E50;  /* Darker background */
+                color: white;  /* White text */
+                border: 1px solid #1E3A5F;
+            }
+        """
+        )
+
+        # Create the mapping_layout
+        mapping_layout = QHBoxLayout()
+
+        # Left side layout for Class Mapping
+        left_layout = QHBoxLayout()
+        left_layout.addWidget(self.download_mapping_button)
+        left_layout.addWidget(mapping_label)
+        left_layout.addWidget(mapping_tooltip_button)
+        left_layout.addWidget(self.mapping_input)
+        left_layout.addWidget(self.mapping_button)
+        left_layout.setAlignment(Qt.AlignLeft)
+
+        # Right side layout for Select Classes
+        right_layout = QHBoxLayout()
+        right_layout.addWidget(select_classes_label)
+        right_layout.addWidget(self.select_classes_combobox)
+        right_layout.setAlignment(Qt.AlignRight)
+
+        # Add layouts to mapping_layout
+        mapping_layout.addLayout(left_layout)
         mapping_layout.addStretch()
+        mapping_layout.addLayout(right_layout)
+
+        # Add mapping_layout to the file_selection_layout
         self.file_selection_layout.addRow(mapping_layout)
 
         self.file_selection_group.setLayout(self.file_selection_layout)
@@ -302,9 +448,29 @@ class PerformanceApp(QWidget):
         self.sample_duration_spin = QSpinBox()
         self.sample_duration_spin.setValue(3)
         self.sample_duration_spin.setMinimum(1)
+        self.sample_duration_spin.setMaximum(999999)  # Remove maximum limit
         sample_duration_tooltip = "Set the length of each audio sample in seconds."
-        self.add_parameter_input(row, "Sample Duration (s):", self.sample_duration_spin, sample_duration_tooltip,
-                                 parameters_layout)
+        self.add_parameter_input(
+            row,
+            "Sample Duration (s):",
+            self.sample_duration_spin,
+            sample_duration_tooltip,
+            parameters_layout,
+        )
+        row += 1
+
+        # Recording duration
+        self.recording_duration_input = QLineEdit()
+        self.recording_duration_input.setPlaceholderText("Determined from files")
+        self.recording_duration_input.setStyleSheet("color: white;")
+        recording_duration_tooltip = "Specify the recording duration in seconds. If left empty, it will be determined from the data."
+        self.add_parameter_input(
+            row,
+            "Recording Duration (s):",
+            self.recording_duration_input,
+            recording_duration_tooltip,
+            parameters_layout,
+        )
         row += 1
 
         # Minimum overlap
@@ -312,10 +478,15 @@ class PerformanceApp(QWidget):
         self.min_overlap_spin.setValue(0.5)
         self.min_overlap_spin.setSingleStep(0.1)
         self.min_overlap_spin.setMinimum(0.0)
+        self.min_overlap_spin.setMaximum(999999.0)  # Remove maximum limit
         min_overlap_tooltip = "Specify the minimum required overlap (in seconds) between an annotation and a sample for the annotation to be considered for that sample."
-
-        self.add_parameter_input(row, "Minimum Overlap (s):", self.min_overlap_spin, min_overlap_tooltip,
-                                 parameters_layout)
+        self.add_parameter_input(
+            row,
+            "Minimum Overlap (s):",
+            self.min_overlap_spin,
+            min_overlap_tooltip,
+            parameters_layout,
+        )
         row += 1
 
         # Threshold slider and display
@@ -324,18 +495,36 @@ class PerformanceApp(QWidget):
         self.threshold_slider.setMaximum(99)
         self.threshold_slider.setValue(10)
         self.threshold_slider.valueChanged.connect(self.threshold_changed)
-        self.threshold_value_label = QLabel(f"{self.threshold_slider.value() / 100:.2f}")
+        self.threshold_value_label = QLabel(
+            f"{self.threshold_slider.value() / 100:.2f}"
+        )
         self.threshold_value_label.setFixedWidth(40)
-        threshold_tooltip = "Adjust the threshold value for classifying a prediction as positive."
-        self.add_parameter_input(row, "Threshold:", self.threshold_slider, threshold_tooltip, parameters_layout,
-                                 extra_widget=self.threshold_value_label)
+        threshold_tooltip = (
+            "Adjust the threshold value for classifying a prediction as positive."
+        )
+        self.add_parameter_input(
+            row,
+            "Threshold:",
+            self.threshold_slider,
+            threshold_tooltip,
+            parameters_layout,
+            extra_widget=self.threshold_value_label,
+        )
         row += 1
 
         # Class-wise Metrics checkbox
         self.class_wise_checkbox = QCheckBox()
         self.class_wise_checkbox.setChecked(False)
-        class_wise_tooltip = "Check this box to see performance metrics for each class individually."
-        self.add_parameter_input(row, "Class-wise Metrics:", self.class_wise_checkbox, class_wise_tooltip, parameters_layout)
+        class_wise_tooltip = (
+            "Check this box to see performance metrics for each class individually."
+        )
+        self.add_parameter_input(
+            row,
+            "Class-wise Metrics:",
+            self.class_wise_checkbox,
+            class_wise_tooltip,
+            parameters_layout,
+        )
         row += 1
 
         self.parameters_group.setLayout(parameters_layout)
@@ -345,7 +534,9 @@ class PerformanceApp(QWidget):
         # Buttons vertical layout
         buttons_group = QGroupBox()
         buttons_group_layout = QVBoxLayout()
-        buttons_group_layout.setSpacing(40)  # Increased vertical spacing between buttons
+        buttons_group_layout.setSpacing(
+            40
+        )  # Increased vertical spacing between buttons
         buttons_group_layout.setContentsMargins(10, 10, 10, 10)
         buttons_group_layout.addStretch()
         buttons_group.setLayout(buttons_group_layout)
@@ -364,29 +555,43 @@ class PerformanceApp(QWidget):
         self.plot_metrics_button = QPushButton("Plot Metrics")
         self.plot_metrics_button.clicked.connect(self.plot_metrics)
         self.plot_metrics_button.setFixedSize(button_width, button_height)
-        buttons_group_layout.addWidget(self.plot_metrics_button, alignment=Qt.AlignCenter)
+        buttons_group_layout.addWidget(
+            self.plot_metrics_button, alignment=Qt.AlignCenter
+        )
 
         # Plot Confusion Matrix button
         self.plot_confusion_button = QPushButton("Plot Confusion Matrix")
         self.plot_confusion_button.clicked.connect(self.plot_confusion_matrix)
         self.plot_confusion_button.setToolTip(
-            "Click to display a confusion matrix showing the percentage of correct and incorrect predictions made by the model for each class.")
-        self.plot_confusion_button.setStyleSheet("""
+            "Click to display a confusion matrix showing the percentage of correct and incorrect predictions made by the model for each class."
+        )
+        self.plot_confusion_button.setStyleSheet(
+            """
             QToolTip {
                 background-color: #2C3E50;
                 color: white;
                 border: 1px solid #1E3A5F;
             }
-        """)
+        """
+        )
         self.plot_confusion_button.setFixedSize(button_width, button_height)
-        buttons_group_layout.addWidget(self.plot_confusion_button, alignment=Qt.AlignCenter)
+        buttons_group_layout.addWidget(
+            self.plot_confusion_button, alignment=Qt.AlignCenter
+        )
 
         # Plot Metrics All Thresholds button
-        self.plot_metrics_all_thresholds_button = QPushButton("Plot Metrics All Thresholds")
-        self.plot_metrics_all_thresholds_button.clicked.connect(self.plot_metrics_all_thresholds)
-        self.plot_metrics_all_thresholds_button.setFixedSize(button_width, button_height)
-
-        buttons_group_layout.addWidget(self.plot_metrics_all_thresholds_button, alignment=Qt.AlignCenter)
+        self.plot_metrics_all_thresholds_button = QPushButton(
+            "Plot Metrics All Thresholds"
+        )
+        self.plot_metrics_all_thresholds_button.clicked.connect(
+            self.plot_metrics_all_thresholds
+        )
+        self.plot_metrics_all_thresholds_button.setFixedSize(
+            button_width, button_height
+        )
+        buttons_group_layout.addWidget(
+            self.plot_metrics_all_thresholds_button, alignment=Qt.AlignCenter
+        )
 
         buttons_group_layout.addStretch()
 
@@ -439,9 +644,12 @@ class PerformanceApp(QWidget):
             metric_layout.addWidget(checkbox)
             # Question mark button with tooltip
             tooltip_button = QToolButton()
-            tooltip_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+            tooltip_button.setIcon(
+                self.style().standardIcon(QStyle.SP_MessageBoxInformation)
+            )
             tooltip_button.setToolTip(description)
-            tooltip_button.setStyleSheet("""
+            tooltip_button.setStyleSheet(
+                """
                 QToolButton:hover {
                     background-color: #294C7D;  /* Lighter blue when hovered */
                 }
@@ -450,7 +658,8 @@ class PerformanceApp(QWidget):
                     color: white;  /* White text for the tooltip */
                     border: 1px solid #1E3A5F;
                 }
-            """)
+            """
+            )
             metric_layout.addWidget(tooltip_button)
             metrics_layout.addLayout(metric_layout)
 
@@ -470,13 +679,17 @@ class PerformanceApp(QWidget):
         # Download Results Table button
         self.download_results_button = QPushButton("Download Results Table")
         self.download_results_button.clicked.connect(self.download_results_table)
-        self.download_results_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.download_results_button.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Fixed
+        )
         download_buttons_layout.addWidget(self.download_results_button)
 
         # Download Data Table button
         self.download_data_button = QPushButton("Download Data Table")
         self.download_data_button.clicked.connect(self.download_data_table)
-        self.download_data_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.download_data_button.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Fixed
+        )
         download_buttons_layout.addWidget(self.download_data_button)
 
         # Add the download buttons layout to the main layout
@@ -502,7 +715,7 @@ class PerformanceApp(QWidget):
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
 
-        plt.close('all')
+        plt.close("all")
 
         self.results_group.setLayout(self.results_layout)
         self.layout.addWidget(self.results_group)
@@ -512,7 +725,15 @@ class PerformanceApp(QWidget):
         self.layout.setStretchFactor(parameters_and_metrics_layout, 0)
         self.layout.setStretchFactor(self.file_selection_group, 0)
 
-    def add_file_input(self, label_text, line_edit, button, tooltip_text, parent_layout=None, extra_widget=None):
+    def add_file_input(
+        self,
+        label_text,
+        line_edit,
+        button,
+        tooltip_text,
+        parent_layout=None,
+        extra_widget=None,
+    ):
         layout = QVBoxLayout()
         label_layout = QHBoxLayout()
         label = QLabel(label_text)
@@ -520,9 +741,12 @@ class PerformanceApp(QWidget):
         label_layout.addWidget(label)
         # Add question mark icon with tooltip
         tooltip_button = QToolButton()
-        tooltip_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+        tooltip_button.setIcon(
+            self.style().standardIcon(QStyle.SP_MessageBoxInformation)
+        )
         tooltip_button.setToolTip(tooltip_text)
-        tooltip_button.setStyleSheet("""
+        tooltip_button.setStyleSheet(
+            """
             QToolButton:hover {
                 background-color: #294C7D;
             }
@@ -531,7 +755,8 @@ class PerformanceApp(QWidget):
                 color: white;
                 border: 1px solid #1E3A5F;
             }
-        """)
+        """
+        )
         label_layout.addWidget(tooltip_button)
         # Add the extra widget (QLineEdit for column name)
         if extra_widget:
@@ -547,12 +772,17 @@ class PerformanceApp(QWidget):
         else:
             self.file_selection_layout.addRow(layout)
 
-    def add_parameter_input(self, row, label_text, widget, tooltip_text, parent_layout, extra_widget=None):
+    def add_parameter_input(
+        self, row, label_text, widget, tooltip_text, parent_layout, extra_widget=None
+    ):
         label = QLabel(label_text)
         tooltip_button = QToolButton()
-        tooltip_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+        tooltip_button.setIcon(
+            self.style().standardIcon(QStyle.SP_MessageBoxInformation)
+        )
         tooltip_button.setToolTip(tooltip_text)
-        tooltip_button.setStyleSheet("""
+        tooltip_button.setStyleSheet(
+            """
             QToolButton:hover {
                 background-color: #294C7D;  /* Lighter blue when hovered */
             }
@@ -561,7 +791,8 @@ class PerformanceApp(QWidget):
                 color: white;  /* White text for the tooltip */
                 border: 1px solid #1E3A5F;
             }
-        """)
+        """
+        )
         parent_layout.addWidget(label, row, 0)
         parent_layout.addWidget(tooltip_button, row, 1)
         parent_layout.addWidget(widget, row, 2)
@@ -582,8 +813,11 @@ class PerformanceApp(QWidget):
 
             # Allow the user to select either a folder or a .txt file
             file_name, _ = QFileDialog.getOpenFileName(
-                self, "Select Annotation File or Folder", "",
-                "Text Files (*.txt);;All Files (*)", options=options
+                self,
+                "Select Annotation File or Folder",
+                "",
+                "Text Files (*.txt);;All Files (*)",
+                options=options,
             )
             if file_name:
                 self.annotation_input.setText(file_name)
@@ -616,8 +850,11 @@ class PerformanceApp(QWidget):
 
             # Allow the user to select either a folder or a .txt file
             file_name, _ = QFileDialog.getOpenFileName(
-                self, "Select Prediction File or Folder", "",
-                "Text Files (*.txt);;All Files (*)", options=options
+                self,
+                "Select Prediction File or Folder",
+                "",
+                "Text Files (*.txt);;All Files (*)",
+                options=options,
             )
             if file_name:
                 self.prediction_input.setText(file_name)
@@ -644,7 +881,13 @@ class PerformanceApp(QWidget):
         try:
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
-            file_name, _ = QFileDialog.getOpenFileName(self, "Select Class Mapping File", "", "JSON Files (*.json)", options=options)
+            file_name, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Class Mapping File",
+                "",
+                "JSON Files (*.json)",
+                options=options,
+            )
             if file_name:
                 self.mapping_input.setText(file_name)
                 self.reset_results()
@@ -663,7 +906,6 @@ class PerformanceApp(QWidget):
         # Calculate metrics
         self.display_metrics()
 
-
     def display_metrics(self):
         threshold = self.threshold_slider.value() / 100.0
         self.pa.threshold = threshold
@@ -671,7 +913,9 @@ class PerformanceApp(QWidget):
         per_class = self.class_wise_checkbox.isChecked()
 
         # Calculate metrics
-        metrics_df = self.pa.calculate_metrics(self.predictions, self.labels, per_class_metrics=per_class)
+        metrics_df = self.pa.calculate_metrics(
+            self.predictions, self.labels, per_class_metrics=per_class
+        )
         self.results_text.setText(metrics_df.to_string())
 
     def plot_metrics(self):
@@ -681,7 +925,9 @@ class PerformanceApp(QWidget):
         per_class = self.class_wise_checkbox.isChecked()
 
         # Calculate metrics
-        metrics_df = self.pa.calculate_metrics(self.predictions, self.labels, per_class_metrics=per_class)
+        metrics_df = self.pa.calculate_metrics(
+            self.predictions, self.labels, per_class_metrics=per_class
+        )
         self.results_text.setText(metrics_df.to_string())
 
         # Plot metrics
@@ -706,7 +952,9 @@ class PerformanceApp(QWidget):
 
         # Plot metrics across thresholds
         self.figure.clear()
-        self.pa.plot_metrics_all_thresholds(self.predictions, self.labels, per_class_metrics=per_class)
+        self.pa.plot_metrics_all_thresholds(
+            self.predictions, self.labels, per_class_metrics=per_class
+        )
         self.canvas.draw()
 
     def update_processor_and_performance_assessor(self):
@@ -719,33 +967,52 @@ class PerformanceApp(QWidget):
 
         # Check if annotation or prediction paths are empty
         if not annotation_path or not prediction_path:
-            self.results_text.setText("Please select both annotation and prediction folders.")
+            self.results_text.setText(
+                "Please select both annotation and prediction folders."
+            )
             return False  # Exit if required paths are not provided
 
         # Load class mapping if provided
         class_mapping = None
         if mapping_path:
             try:
-                with open(mapping_path, 'r') as f:
+                with open(mapping_path, "r") as f:
                     class_mapping = json.load(f)
             except Exception as e:
                 self.results_text.setText(f"Error loading class mapping file: {e}")
                 return False  # Exit if loading the mapping fails
 
-        # Check if the paths refer to files or directories
-        annotation_dir, annotation_file = (os.path.dirname(annotation_path), os.path.basename(annotation_path)) \
-            if os.path.isfile(annotation_path) else (annotation_path, None)
+        recording_duration_input = self.recording_duration_input.text()
+        if recording_duration_input.strip() == "":
+            recording_duration = None
+        else:
+            try:
+                recording_duration = float(recording_duration_input)
+            except ValueError:
+                self.results_text.setText(
+                    "Please enter a valid number for Recording Duration."
+                )
+                return False
 
-        prediction_dir, prediction_file = (os.path.dirname(prediction_path), os.path.basename(prediction_path)) \
-            if os.path.isfile(prediction_path) else (prediction_path, None)
+        # Check if the paths refer to files or directories
+        annotation_dir, annotation_file = (
+            (os.path.dirname(annotation_path), os.path.basename(annotation_path))
+            if os.path.isfile(annotation_path)
+            else (annotation_path, None)
+        )
+
+        prediction_dir, prediction_file = (
+            (os.path.dirname(prediction_path), os.path.basename(prediction_path))
+            if os.path.isfile(prediction_path)
+            else (prediction_path, None)
+        )
 
         # Collect selected columns for annotations
         columns_annotations = {}
         for label_text, combobox in self.annotation_column_dropdowns.items():
             selected_column = combobox.currentText()
-            if selected_column == 'None':
-                # Do not include this column
-                continue
+            if selected_column == "None":
+                columns_annotations[label_text] = None  # Include this as None
             else:
                 columns_annotations[label_text] = selected_column
 
@@ -753,21 +1020,23 @@ class PerformanceApp(QWidget):
         columns_predictions = {}
         for label_text, combobox in self.prediction_column_dropdowns.items():
             selected_column = combobox.currentText()
-            if selected_column == 'None':
-                # Do not include this column
-                continue
+            if selected_column == "None":
+                columns_predictions[label_text] = None  # Include this as None
             else:
                 columns_predictions[label_text] = selected_column
 
         # Determine if reinitialization is necessary
-        if (self.processor is None or
-                self.previous_annotation_path != annotation_path or
-                self.previous_prediction_path != prediction_path or
-                self.previous_mapping_path != mapping_path or
-                self.previous_sample_duration != sample_duration or
-                self.previous_min_overlap != min_overlap or
-                self.previous_columns_predictions != columns_predictions or
-                self.previous_columns_annotations != columns_annotations):
+        if (
+            self.processor is None
+            or self.previous_annotation_path != annotation_path
+            or self.previous_prediction_path != prediction_path
+            or self.previous_mapping_path != mapping_path
+            or self.previous_sample_duration != sample_duration
+            or self.previous_min_overlap != min_overlap
+            or self.previous_columns_predictions != columns_predictions
+            or self.previous_columns_annotations != columns_annotations
+            or self.previous_recording_duration != recording_duration
+        ):
 
             try:
                 # Initialize DataProcessor
@@ -780,7 +1049,8 @@ class PerformanceApp(QWidget):
                     sample_duration=sample_duration,
                     min_overlap=min_overlap,
                     columns_predictions=columns_predictions,
-                    columns_annotations=columns_annotations
+                    columns_annotations=columns_annotations,
+                    recording_duration=recording_duration,
                 )
 
                 # Update the stored parameters after initialization
@@ -791,6 +1061,10 @@ class PerformanceApp(QWidget):
                 self.previous_min_overlap = min_overlap
                 self.previous_columns_predictions = columns_predictions
                 self.previous_columns_annotations = columns_annotations
+                self.previous_recording_duration = recording_duration
+
+                # Populate classes in the combo box
+                self.populate_classes_combobox(self.processor.classes)
 
             except Exception as e:
                 self.results_text.setText(f"Error initializing DataProcessor: {e}")
@@ -799,11 +1073,24 @@ class PerformanceApp(QWidget):
         # Get predictions and labels from the processor
         self.predictions = self.processor.get_prediction_tensor()
         self.labels = self.processor.get_label_tensor()
-        classes = self.processor.classes
+
+        # Get selected classes
+        selected_classes = self.select_classes_combobox.checkedItems()
+        if not selected_classes:
+            self.results_text.setText("Please select at least one class.")
+            return False
+
+        # Filter predictions and labels for selected classes
+        class_indices = [
+            i for i, cls in enumerate(self.processor.classes) if cls in selected_classes
+        ]
+        self.predictions = self.predictions[:, class_indices]
+        self.labels = self.labels[:, class_indices]
+        classes = tuple(self.processor.classes[i] for i in class_indices)
         num_classes = len(classes)
 
         # Determine the task type (binary or multilabel)
-        task = 'binary' if num_classes == 1 else 'multilabel'
+        task = "binary" if num_classes == 1 else "multilabel"
 
         # Extract selected metrics
         selected_metrics = []
@@ -813,7 +1100,7 @@ class PerformanceApp(QWidget):
             "precision": "precision",
             "f1 score": "f1",
             "average precision (ap)": "ap",
-            "auroc": "auroc"
+            "auroc": "auroc",
         }
         for metric_name_lower, checkbox in self.metrics_checkboxes.items():
             if checkbox.isChecked():
@@ -827,17 +1114,18 @@ class PerformanceApp(QWidget):
             threshold=self.threshold_slider.value() / 100.0,
             classes=classes,
             task=task,
-            metrics=metrics
+            metrics=metrics,
         )
 
         return True  # Indicate successful update
 
     def get_columns_from_files(self, directory_or_file):
         import pandas as pd
+
         columns = set()
         if os.path.isfile(directory_or_file):
             try:
-                df = pd.read_csv(directory_or_file, sep=None, engine='python', nrows=0)
+                df = pd.read_csv(directory_or_file, sep=None, engine="python", nrows=0)
                 columns.update(df.columns)
             except Exception as e:
                 print(f"Error reading file {directory_or_file}: {e}")
@@ -845,13 +1133,28 @@ class PerformanceApp(QWidget):
             # Read columns from all files in the directory
             for filename in os.listdir(directory_or_file):
                 filepath = os.path.join(directory_or_file, filename)
-                if os.path.isfile(filepath) and filename.endswith(('.txt', '.csv')):
+                if os.path.isfile(filepath) and filename.endswith((".txt", ".csv")):
                     try:
-                        df = pd.read_csv(filepath, sep=None, engine='python', nrows=0)
+                        df = pd.read_csv(filepath, sep=None, engine="python", nrows=0)
                         columns.update(df.columns)
                     except Exception as e:
                         print(f"Error reading file {filepath}: {e}")
         return columns
+
+    def populate_classes_combobox(self, classes):
+        self.select_classes_combobox.clearItems()
+        # Add 'Select All' option
+        self.select_classes_combobox.addItem("Select All")
+        select_all_item = self.select_classes_combobox.model().item(0, 0)
+        select_all_item.setCheckState(Qt.Unchecked)
+
+        # Add class items
+        for class_name in classes:
+            self.select_classes_combobox.addItem(class_name)
+            item = self.select_classes_combobox.model().item(
+                self.select_classes_combobox.count() - 1, 0
+            )
+            item.setCheckState(Qt.Checked)  # Default to selected
 
     def on_annotation_path_changed(self, path):
         if not path:
@@ -874,7 +1177,7 @@ class PerformanceApp(QWidget):
     def update_annotation_columns(self, columns):
         for label_text, combobox in self.annotation_column_dropdowns.items():
             combobox.clear()
-            combobox.addItem('None')  # Add 'None' as the first option
+            combobox.addItem("None")  # Add 'None' as the first option
             combobox.addItems(sorted(columns))
             # Set default value if it exists
             default_value = self.annotation_default_columns.get(label_text)
@@ -888,7 +1191,7 @@ class PerformanceApp(QWidget):
     def update_prediction_columns(self, columns):
         for label_text, combobox in self.prediction_column_dropdowns.items():
             combobox.clear()
-            combobox.addItem('None')  # Add 'None' as the first option
+            combobox.addItem("None")  # Add 'None' as the first option
             combobox.addItems(sorted(columns))
             # Set default value if it exists
             default_value = self.prediction_default_columns.get(label_text)
@@ -900,17 +1203,25 @@ class PerformanceApp(QWidget):
                 combobox.setCurrentIndex(0)  # Set to 'None'
 
     def download_results_table(self):
-        if not hasattr(self, 'pa'):
+        if not hasattr(self, "pa"):
             self.results_text.setText("Please calculate metrics first.")
             return
 
         per_class = self.class_wise_checkbox.isChecked()
-        metrics_df = self.pa.calculate_metrics(self.predictions, self.labels, per_class_metrics=per_class)
+        metrics_df = self.pa.calculate_metrics(
+            self.predictions, self.labels, per_class_metrics=per_class
+        )
 
         # Open a file dialog to select the save location
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Results Table", "results.csv", "CSV Files (*.csv)", options=options)
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Results Table",
+            "results.csv",
+            "CSV Files (*.csv)",
+            options=options,
+        )
         if file_name:
             try:
                 metrics_df.to_csv(file_name, index=True)
@@ -919,7 +1230,7 @@ class PerformanceApp(QWidget):
                 self.results_text.setText(f"Error saving results table: {e}")
 
     def download_data_table(self):
-        if not hasattr(self, 'processor'):
+        if not hasattr(self, "processor"):
             self.results_text.setText("Please process data first.")
             return
 
@@ -928,8 +1239,13 @@ class PerformanceApp(QWidget):
             # Open a file dialog to select the save location
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
-            file_name, _ = QFileDialog.getSaveFileName(self, "Save Data Table", "data.csv", "CSV Files (*.csv)",
-                                                       options=options)
+            file_name, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Data Table",
+                "data.csv",
+                "CSV Files (*.csv)",
+                options=options,
+            )
             if file_name:
                 data_df.to_csv(file_name, index=False)
                 self.results_text.setText(f"Data table saved to {file_name}")
@@ -955,13 +1271,20 @@ class PerformanceApp(QWidget):
         # Open a file dialog to select the save location
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Class Mapping Template", "class_mapping.json", "JSON Files (*.json)",
-                                                   options=options)
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Class Mapping Template",
+            "class_mapping.json",
+            "JSON Files (*.json)",
+            options=options,
+        )
         if file_name:
             try:
-                with open(file_name, 'w') as f:
+                with open(file_name, "w") as f:
                     json.dump(template_mapping, f, indent=4)
-                self.results_text.setText(f"Class mapping template saved to {file_name}")
+                self.results_text.setText(
+                    f"Class mapping template saved to {file_name}"
+                )
             except Exception as e:
                 self.results_text.setText(f"Error saving class mapping template: {e}")
 
@@ -969,16 +1292,16 @@ class PerformanceApp(QWidget):
         self.results_text.clear()
         self.figure.clear()
         self.canvas.draw()
-        #self.metrics_calculated = False  # Reset the flag
+        # self.metrics_calculated = False  # Reset the flag
 
     def closeEvent(self, event):
-        plt.close('all')
+        plt.close("all")
         super().closeEvent(event)
 
 
 def main():
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')
+    app.setStyle("Fusion")
 
     # Set the dark palette
     palette = QPalette()
@@ -998,24 +1321,26 @@ def main():
     app.setPalette(palette)
 
     # Optionally, set a modern font
-    font = QFont('Segoe UI', 10)
+    font = QFont("Segoe UI", 10)
     app.setFont(font)
 
     # Apply a global stylesheet for QPushButton and QToolButton
 
-    app.setStyleSheet("""
+    app.setStyleSheet(
+        """
         QPushButton:hover {
             background-color: #294C7D;  /* Lighter blue when hovered */
         }
         QToolButton:hover {
             background-color: #294C7D;  /* Lighter blue when hovered */
         }
-    """)
+    """
+    )
 
     window = PerformanceApp()
     window.show()
     sys.exit(app.exec())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
