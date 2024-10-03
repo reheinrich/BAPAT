@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QPalette, QColor, QIcon
-from PySide6.QtWidgets import QStyle
+from PySide6.QtWidgets import QComboBox, QStyle
 
 import matplotlib
 matplotlib.use('QtAgg')  # Set the Matplotlib backend to QtAgg
@@ -19,8 +19,11 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 # Import your existing classes
-from bapat.preprocessing.data_processing import DataProcessor
-from bapat.assessment.performance_assessor import PerformanceAssessor
+# from bapat.preprocessing.data_processing import DataProcessor
+# from bapat.assessment.performance_assessor import PerformanceAssessor
+
+from preprocessing.data_processing import DataProcessor
+from assessment.performance_assessor import PerformanceAssessor
 
 # Disable interactive mode to avoid automatic figure creation
 plt.ioff()  # Add this line to disable the interactive mode
@@ -59,8 +62,8 @@ class PerformanceApp(QWidget):
         self.previous_mapping_path = None
         self.previous_sample_duration = None
         self.previous_min_overlap = None
-        self.previous_column_name_predictions = None
-        self.previous_column_name_annotations = None
+        self.previous_columns_predictions = None
+        self.previous_columns_annotations = None
         self.processor = None
 
         self.init_ui()
@@ -86,59 +89,154 @@ class PerformanceApp(QWidget):
         self.annotation_input = DropLineEdit()
         self.annotation_button = QPushButton("Browse")
         self.annotation_button.clicked.connect(self.select_annotation_folder)
-        # New QLineEdit for annotation column name
-        self.annotation_column_input = QLineEdit()
-        self.annotation_column_input.setFixedWidth(150)
-        self.annotation_column_input.setPlaceholderText("Class Column Name")
-        self.annotation_column_input.setToolTip(
-            "Specify the name of the column in your annotation files that contains the relevant annotations. The default is 'Class'.")
-        self.annotation_column_input.setStyleSheet("""
-                    QLineEdit {
-                        color: white;
-                    }
-                    QLineEdit::placeholder {
-                        color: white;
-                    }
-                    QToolTip {
-                        background-color: #2C3E50;  /* Darker background */
-                        color: white;  /* White text */
-                        border: 1px solid #1E3A5F;
-                    }
-                """)
+        self.annotation_input.textChanged.connect(self.on_annotation_path_changed)  # Connect signal
         self.add_file_input("Annotations Folder:", self.annotation_input, self.annotation_button, annotation_tooltip,
-                            file_inputs_layout, extra_widget=self.annotation_column_input)
-
-        #self.add_file_input("Annotations Folder:", self.annotation_input, self.annotation_button, annotation_tooltip, file_inputs_layout)
+                            file_inputs_layout)
 
         # Predictions folder selection
         prediction_tooltip = "Select the folder that contains the model's prediction files."
         self.prediction_input = DropLineEdit()
         self.prediction_button = QPushButton("Browse")
         self.prediction_button.clicked.connect(self.select_prediction_folder)
-        # New QLineEdit for prediction column name
-        self.prediction_column_input = QLineEdit()
-        self.prediction_column_input.setFixedWidth(150)
-        self.prediction_column_input.setPlaceholderText("Class Column Name")
-        self.prediction_column_input.setToolTip(
-            "Specify the name of the column in your prediction files that contains the class names. The default is 'Common Name'.")
-        self.prediction_column_input.setStyleSheet("""
-                            QLineEdit {
-                                color: white;
-                            }
-                            QLineEdit::placeholder {
-                                color: white;
-                            }
-                            QToolTip {
-                                background-color: #2C3E50;  /* Darker background */
-                                color: white;  /* White text */
-                                border: 1px solid #1E3A5F;
-                            }
-                        """)
+        self.prediction_input.textChanged.connect(self.on_prediction_path_changed)  # Connect signal
         self.add_file_input("Predictions Folder:", self.prediction_input, self.prediction_button, prediction_tooltip,
-                            file_inputs_layout, extra_widget=self.prediction_column_input)
-        #self.add_file_input("Predictions Folder:", self.prediction_input, self.prediction_button, prediction_tooltip, file_inputs_layout)
+                            file_inputs_layout)
 
         self.file_selection_layout.addRow(file_inputs_layout)
+
+        # Default columns for annotations
+        self.annotation_default_columns = {
+            "Start Time": "Begin Time (s)",
+            "End Time": "End Time (s)",
+            "Class": "Class",
+            "Recording": "Begin File",
+            "Duration": "File Duration (s)"
+        }
+
+        # Default columns for predictions
+        self.prediction_default_columns = {
+            "Start Time": "Begin Time (s)",
+            "End Time": "End Time (s)",
+            "Class": "Common Name",
+            "Recording": "Begin File",
+            "Duration": "File Duration (s)",
+            "Confidence": "Confidence"
+        }
+
+        # Create a horizontal layout to contain both annotations and predictions columns
+        columns_selection_layout = QHBoxLayout()
+        columns_selection_layout.setSpacing(20)  # Add spacing between annotations and predictions
+
+        # Annotations columns selection
+        annotation_columns_layout = QVBoxLayout()
+
+        # First Row: labels for annotations
+        annotation_labels_layout = QHBoxLayout()
+        annotation_labels_layout.setSpacing(5)
+        annotation_labels_layout.setAlignment(Qt.AlignLeft)  # Left-align the labels
+        annotation_labels = ["Start Time", "End Time", "Class", "Recording", "Duration"]
+        for label_text in annotation_labels:
+            label = QLabel(label_text)
+            label.setAlignment(Qt.AlignLeft)  # Left-align the text within the label
+            font = label.font()
+            font.setPointSize(9)  # Make the text smaller
+            label.setFont(font)
+            label.setFixedWidth(60)
+            annotation_labels_layout.addWidget(label)
+        annotation_columns_layout.addLayout(annotation_labels_layout)
+
+        # Tooltips for annotation columns
+        annotation_tooltips = {
+            "Start Time": "Select the column that contains the start time of the annotations.",
+            "End Time": "Select the column that contains the end time of the annotations.",
+            "Class": "Select the column that contains the class labels of the annotations.",
+            "Recording": "Select the column that contains the recording file name in the annotation files.",
+            "Duration": "Select the column that contains the duration of the recordings in the annotation files."
+        }
+
+        # Second Row: drop-down menus for annotations
+        annotation_dropdowns_layout = QHBoxLayout()
+        annotation_dropdowns_layout.setSpacing(5)
+        annotation_dropdowns_layout.setAlignment(Qt.AlignLeft)  # Left-align the combo boxes
+        self.annotation_column_dropdowns = {}
+        for label_text in annotation_labels:
+            combobox = QComboBox()
+            font = combobox.font()
+            font.setPointSize(9)  # Make the text smaller
+            combobox.setFont(font)
+            combobox.setFixedWidth(60)
+            tooltip_text = annotation_tooltips.get(label_text, "")
+            combobox.setToolTip(tooltip_text)
+            combobox.setStyleSheet("""
+                QToolTip {
+                    background-color: #2C3E50;
+                    color: white;
+                    border: 1px solid #1E3A5F;
+                }
+            """)
+            self.annotation_column_dropdowns[label_text] = combobox
+            annotation_dropdowns_layout.addWidget(combobox)
+        annotation_columns_layout.addLayout(annotation_dropdowns_layout)
+
+        # Predictions columns selection
+        prediction_columns_layout = QVBoxLayout()
+
+        # First Row: labels for predictions
+        prediction_labels_layout = QHBoxLayout()
+        prediction_labels_layout.setSpacing(5)
+        prediction_labels_layout.setAlignment(Qt.AlignRight)  # Right-align the labels
+        prediction_labels = ["Start Time", "End Time", "Class", "Confidence", "Recording", "Duration"]
+        for label_text in prediction_labels:
+            label = QLabel(label_text)
+            label.setAlignment(Qt.AlignRight)  # Right-align the text within the label
+            font = label.font()
+            font.setPointSize(9)  # Make the text smaller
+            label.setFont(font)
+            label.setFixedWidth(60)
+            prediction_labels_layout.addWidget(label)
+        prediction_columns_layout.addLayout(prediction_labels_layout)
+
+        # Tooltips for prediction columns
+        prediction_tooltips = {
+            "Start Time": "Select the column that contains the start time of the predictions.",
+            "End Time": "Select the column that contains the end time of the predictions.",
+            "Class": "Select the column that contains the class labels of the predictions.",
+            "Confidence": "Select the column that contains the confidence scores of the predictions.",
+            "Recording": "Select the column that contains the recording file name in the prediction files.",
+            "Duration": "Select the column that contains the duration of the recordings in the prediction files."
+        }
+
+        # Second Row: drop-down menus for predictions
+        prediction_dropdowns_layout = QHBoxLayout()
+        prediction_dropdowns_layout.setSpacing(5)
+        prediction_dropdowns_layout.setAlignment(Qt.AlignRight)  # Right-align the combo boxes
+        self.prediction_column_dropdowns = {}
+        for label_text in prediction_labels:
+            combobox = QComboBox()
+            font = combobox.font()
+            font.setPointSize(9)  # Make the text smaller
+            combobox.setFont(font)
+            combobox.setFixedWidth(60)
+            tooltip_text = prediction_tooltips.get(label_text, "")
+            combobox.setToolTip(tooltip_text)
+            combobox.setStyleSheet("""
+                QToolTip {
+                    background-color: #2C3E50;
+                    color: white;
+                    border: 1px solid #1E3A5F;
+                }
+            """)
+            self.prediction_column_dropdowns[label_text] = combobox
+            prediction_dropdowns_layout.addWidget(combobox)
+        prediction_columns_layout.addLayout(prediction_dropdowns_layout)
+
+        # Add annotations and predictions columns layouts to the horizontal layout
+        columns_selection_layout.addLayout(annotation_columns_layout)
+        columns_selection_layout.addStretch()  # Add stretchable space
+        columns_selection_layout.addLayout(prediction_columns_layout)
+
+        # Add the columns_selection_layout to the file_selection_layout
+        self.file_selection_layout.addRow(columns_selection_layout)
 
         # Class mapping file selection (optional)
         class_mapping_tooltip = "Optional: Select a JSON file that maps class names between your prediction and annotation files."
@@ -479,16 +577,32 @@ class PerformanceApp(QWidget):
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
 
+            # Initialize folder to None
+            folder = None
+
             # Allow the user to select either a folder or a .txt file
-            file_name, _ = QFileDialog.getOpenFileName(self, "Select Annotation File or Folder", "",
-                                                       "Text Files (*.txt);;All Files (*)", options=options)
-            if not file_name:
-                folder = QFileDialog.getExistingDirectory(self, "Select Annotation Folder", options=options)
+            file_name, _ = QFileDialog.getOpenFileName(
+                self, "Select Annotation File or Folder", "",
+                "Text Files (*.txt);;All Files (*)", options=options
+            )
+            if file_name:
+                self.annotation_input.setText(file_name)
+            else:
+                folder = QFileDialog.getExistingDirectory(
+                    self, "Select Annotation Folder", options=options
+                )
                 if folder:
                     self.annotation_input.setText(folder)
-            else:
-                self.annotation_input.setText(file_name)
+                else:
+                    return  # No file or folder selected
+
+            # Determine the path to use
+            path = file_name if file_name else folder
+
+            columns = self.get_columns_from_files(path)
+            self.update_annotation_columns(columns)
             self.reset_results()
+
         except Exception as e:
             print(f"Error selecting annotation file or folder: {e}")
 
@@ -497,16 +611,32 @@ class PerformanceApp(QWidget):
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
 
+            # Initialize folder to None
+            folder = None
+
             # Allow the user to select either a folder or a .txt file
-            file_name, _ = QFileDialog.getOpenFileName(self, "Select Prediction File or Folder", "",
-                                                       "Text Files (*.txt);;All Files (*)", options=options)
-            if not file_name:
-                folder = QFileDialog.getExistingDirectory(self, "Select Prediction Folder", options=options)
+            file_name, _ = QFileDialog.getOpenFileName(
+                self, "Select Prediction File or Folder", "",
+                "Text Files (*.txt);;All Files (*)", options=options
+            )
+            if file_name:
+                self.prediction_input.setText(file_name)
+            else:
+                folder = QFileDialog.getExistingDirectory(
+                    self, "Select Prediction Folder", options=options
+                )
                 if folder:
                     self.prediction_input.setText(folder)
-            else:
-                self.prediction_input.setText(file_name)
+                else:
+                    return  # No file or folder selected
+
+            # Determine the path to use
+            path = file_name if file_name else folder
+
+            columns = self.get_columns_from_files(path)
+            self.update_prediction_columns(columns)
             self.reset_results()
+
         except Exception as e:
             print(f"Error selecting prediction file or folder: {e}")
 
@@ -586,8 +716,6 @@ class PerformanceApp(QWidget):
         mapping_path = self.mapping_input.text()
         sample_duration = self.sample_duration_spin.value()
         min_overlap = self.min_overlap_spin.value()
-        column_name_predictions = self.prediction_column_input.text() or "Common Name"
-        column_name_annotations = self.annotation_column_input.text() or "Class"
 
         # Check if annotation or prediction paths are empty
         if not annotation_path or not prediction_path:
@@ -611,6 +739,26 @@ class PerformanceApp(QWidget):
         prediction_dir, prediction_file = (os.path.dirname(prediction_path), os.path.basename(prediction_path)) \
             if os.path.isfile(prediction_path) else (prediction_path, None)
 
+        # Collect selected columns for annotations
+        columns_annotations = {}
+        for label_text, combobox in self.annotation_column_dropdowns.items():
+            selected_column = combobox.currentText()
+            if selected_column == 'None':
+                # Do not include this column
+                continue
+            else:
+                columns_annotations[label_text] = selected_column
+
+        # Collect selected columns for predictions
+        columns_predictions = {}
+        for label_text, combobox in self.prediction_column_dropdowns.items():
+            selected_column = combobox.currentText()
+            if selected_column == 'None':
+                # Do not include this column
+                continue
+            else:
+                columns_predictions[label_text] = selected_column
+
         # Determine if reinitialization is necessary
         if (self.processor is None or
                 self.previous_annotation_path != annotation_path or
@@ -618,8 +766,8 @@ class PerformanceApp(QWidget):
                 self.previous_mapping_path != mapping_path or
                 self.previous_sample_duration != sample_duration or
                 self.previous_min_overlap != min_overlap or
-                self.previous_column_name_predictions != column_name_predictions or
-                self.previous_column_name_annotations != column_name_annotations):
+                self.previous_columns_predictions != columns_predictions or
+                self.previous_columns_annotations != columns_annotations):
 
             try:
                 # Initialize DataProcessor
@@ -631,8 +779,8 @@ class PerformanceApp(QWidget):
                     class_mapping=class_mapping,
                     sample_duration=sample_duration,
                     min_overlap=min_overlap,
-                    column_name_predictions=column_name_predictions,
-                    column_name_annotations=column_name_annotations
+                    columns_predictions=columns_predictions,
+                    columns_annotations=columns_annotations
                 )
 
                 # Update the stored parameters after initialization
@@ -641,8 +789,8 @@ class PerformanceApp(QWidget):
                 self.previous_mapping_path = mapping_path
                 self.previous_sample_duration = sample_duration
                 self.previous_min_overlap = min_overlap
-                self.previous_column_name_predictions = column_name_predictions
-                self.previous_column_name_annotations = column_name_annotations
+                self.previous_columns_predictions = columns_predictions
+                self.previous_columns_annotations = columns_annotations
 
             except Exception as e:
                 self.results_text.setText(f"Error initializing DataProcessor: {e}")
@@ -683,6 +831,73 @@ class PerformanceApp(QWidget):
         )
 
         return True  # Indicate successful update
+
+    def get_columns_from_files(self, directory_or_file):
+        import pandas as pd
+        columns = set()
+        if os.path.isfile(directory_or_file):
+            try:
+                df = pd.read_csv(directory_or_file, sep=None, engine='python', nrows=0)
+                columns.update(df.columns)
+            except Exception as e:
+                print(f"Error reading file {directory_or_file}: {e}")
+        elif os.path.isdir(directory_or_file):
+            # Read columns from all files in the directory
+            for filename in os.listdir(directory_or_file):
+                filepath = os.path.join(directory_or_file, filename)
+                if os.path.isfile(filepath) and filename.endswith(('.txt', '.csv')):
+                    try:
+                        df = pd.read_csv(filepath, sep=None, engine='python', nrows=0)
+                        columns.update(df.columns)
+                    except Exception as e:
+                        print(f"Error reading file {filepath}: {e}")
+        return columns
+
+    def on_annotation_path_changed(self, path):
+        if not path:
+            return
+        # Determine if the path is a file or directory
+        if os.path.exists(path):
+            columns = self.get_columns_from_files(path)
+            self.update_annotation_columns(columns)
+            self.reset_results()
+
+    def on_prediction_path_changed(self, path):
+        if not path:
+            return
+        # Determine if the path is a file or directory
+        if os.path.exists(path):
+            columns = self.get_columns_from_files(path)
+            self.update_prediction_columns(columns)
+            self.reset_results()
+
+    def update_annotation_columns(self, columns):
+        for label_text, combobox in self.annotation_column_dropdowns.items():
+            combobox.clear()
+            combobox.addItem('None')  # Add 'None' as the first option
+            combobox.addItems(sorted(columns))
+            # Set default value if it exists
+            default_value = self.annotation_default_columns.get(label_text)
+            if default_value in columns:
+                index = combobox.findText(default_value)
+                if index >= 0:
+                    combobox.setCurrentIndex(index)  # Do not add +1
+            else:
+                combobox.setCurrentIndex(0)  # Set to 'None'
+
+    def update_prediction_columns(self, columns):
+        for label_text, combobox in self.prediction_column_dropdowns.items():
+            combobox.clear()
+            combobox.addItem('None')  # Add 'None' as the first option
+            combobox.addItems(sorted(columns))
+            # Set default value if it exists
+            default_value = self.prediction_default_columns.get(label_text)
+            if default_value in columns:
+                index = combobox.findText(default_value)
+                if index >= 0:
+                    combobox.setCurrentIndex(index)  # Do not add +1
+            else:
+                combobox.setCurrentIndex(0)  # Set to 'None'
 
     def download_results_table(self):
         if not hasattr(self, 'pa'):

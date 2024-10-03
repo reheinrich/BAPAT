@@ -25,8 +25,8 @@ class DataProcessor:
             class_mapping: Optional[Dict[str, str]] = None,
             sample_duration: int = 3,
             min_overlap: float = 0.5,
-            column_name_predictions: str = "Common Name",
-            column_name_annotations: str = "Class",
+            columns_predictions: Dict[str, str] = None,
+            columns_annotations: Dict[str, str] = None,
     ) -> None:
         """
         Initializes the DataProcessor by loading prediction and annotation data.
@@ -39,12 +39,31 @@ class DataProcessor:
             class_mapping (Optional[dict]): Optional dictionary mapping raw class names to standardized class names. Defaults to None.
             sample_duration (int, optional): Length of each data sample in seconds. Defaults to 3.
             min_overlap (float, optional): Minimum overlap required between prediction and annotation to consider a match. Defaults to 0.5.
+            columns_predictions (Dict[str, str], optional): Column name mappings for prediction files.
+            columns_annotations (Dict[str, str], optional): Column name mappings for annotation files.
         """
         self.sample_duration = sample_duration
         self.min_overlap = min_overlap
         self.class_mapping = class_mapping
-        self.column_name_predictions = column_name_predictions
-        self.column_name_annotations = column_name_annotations
+        self.columns_predictions = columns_predictions or {}
+        self.columns_annotations = columns_annotations or {}
+
+        self.default_columns_predictions = {
+            "Start Time": "Begin Time (s)",
+            "End Time": "End Time (s)",
+            "Class": "Common Name",
+            "Recording": "Begin File",
+            "Duration": "File Duration (s)",
+            "Confidence": "Confidence"
+        }
+
+        self.default_columns_annotations = {
+            "Start Time": "Begin Time (s)",
+            "End Time": "End Time (s)",
+            "Class": "Class",
+            "Recording": "Begin File",
+            "Duration": "File Duration (s)"
+        }
 
         if prediction_file_name is None or annotation_file_name is None:
             # Read all prediction files into a single DataFrame
@@ -56,31 +75,43 @@ class DataProcessor:
                 annotation_directory_path
             )
 
-            # Extract recording filenames from 'Begin Path' in predictions
-            if 'Begin Path' in predictions_df.columns:
-                predictions_df['recording_filename'] = self._extract_recording_filename(predictions_df['Begin Path'])
+            # For predictions
+            recording_col_pred = self.get_column_name("Recording", prediction=True)
+            if recording_col_pred in predictions_df.columns:
+                predictions_df['recording_filename'] = self._extract_recording_filename(
+                    predictions_df[recording_col_pred])
+            elif 'Begin Path' in predictions_df.columns:
+                predictions_df['recording_filename'] = self._extract_recording_filename(
+                    predictions_df['Begin Path'])
             else:
-                # Extract from source_file
-                predictions_df['recording_filename'] = self._extract_recording_filename_from_filename(predictions_df['source_file'])
+                predictions_df['recording_filename'] = self._extract_recording_filename_from_filename(
+                    predictions_df['source_file'])
 
-            # Extract recording filenames from 'Begin Path' or 'Begin File' in annotations
-            if 'Begin Path' in annotations_df.columns:
-                annotations_df['recording_filename'] = self._extract_recording_filename(annotations_df['Begin Path'])
-            elif 'Begin File' in annotations_df.columns:
-                annotations_df['recording_filename'] = self._extract_recording_filename(annotations_df['Begin File'])
+            # For annotations
+            recording_col_annot = self.get_column_name("Recording", prediction=False)
+            if recording_col_annot in annotations_df.columns:
+                annotations_df['recording_filename'] = self._extract_recording_filename(
+                    annotations_df[recording_col_annot])
+            elif 'Begin Path' in annotations_df.columns:
+                annotations_df['recording_filename'] = self._extract_recording_filename(
+                    annotations_df['Begin Path'])
             else:
-                # Extract from source_file
-                annotations_df['recording_filename'] = self._extract_recording_filename_from_filename(annotations_df['source_file'])
+                annotations_df['recording_filename'] = self._extract_recording_filename_from_filename(
+                    annotations_df['source_file'])
 
             # Apply class mapping to prediction files only
             if self.class_mapping:
-                predictions_df[self.column_name_predictions] = predictions_df[
-                    self.column_name_predictions
+                class_col_pred = self.get_column_name("Class", prediction=True)
+                predictions_df[class_col_pred] = predictions_df[
+                    class_col_pred
                 ].apply(lambda x: self.class_mapping.get(x, x))
 
             # Collect all classes from both prediction and annotation
-            pred_classes = set(predictions_df[self.column_name_predictions].unique())
-            annot_classes = set(annotations_df[self.column_name_annotations].unique())
+            class_col_pred = self.get_column_name("Class", prediction=True)
+            class_col_annot = self.get_column_name("Class", prediction=False)
+
+            pred_classes = set(predictions_df[class_col_pred].unique())
+            annot_classes = set(annotations_df[class_col_annot].unique())
             all_classes = pred_classes.union(annot_classes)
             self.classes = tuple(sorted(all_classes))
 
@@ -97,12 +128,15 @@ class DataProcessor:
                 annot_df = annotations_df[annotations_df['recording_filename'] == recording_filename]
 
                 # Determine file duration
-                file_duration = None
-                if 'File Duration (s)' in pred_df.columns and not pred_df['File Duration (s)'].isnull().all():
-                    file_duration = pred_df['File Duration (s)'].iloc[0]
+                file_duration_col_pred = self.get_column_name("Duration", prediction=True)
+                end_time_col_pred = self.get_column_name("End Time", prediction=True)
+                end_time_col_annot = self.get_column_name("End Time", prediction=False)
+
+                if file_duration_col_pred in pred_df.columns and not pred_df[file_duration_col_pred].isnull().all():
+                    file_duration = pred_df[file_duration_col_pred].iloc[0]
                 else:
-                    pred_max_time = pred_df['End Time (s)'].max() if not pred_df.empty else 0
-                    annot_max_time = annot_df['End Time (s)'].max() if not annot_df.empty else 0
+                    pred_max_time = pred_df[end_time_col_pred].max() if not pred_df.empty else 0
+                    annot_max_time = annot_df[end_time_col_annot].max() if not annot_df.empty else 0
                     file_duration = max(pred_max_time, annot_max_time)
 
                 # Initialize the DataFrame for sampled intervals, including all classes
@@ -156,27 +190,35 @@ class DataProcessor:
             annot_df['source_file'] = annotation_file_name
 
             # Extract recording filenames
-            if 'Begin Path' in pred_df.columns:
+            recording_col_pred = self.get_column_name("Recording", prediction=True)
+            if recording_col_pred in pred_df.columns:
+                pred_df['recording_filename'] = self._extract_recording_filename(pred_df[recording_col_pred])
+            elif 'Begin Path' in pred_df.columns:
                 pred_df['recording_filename'] = self._extract_recording_filename(pred_df['Begin Path'])
             else:
                 pred_df['recording_filename'] = self._extract_recording_filename_from_filename(pred_df['source_file'])
 
-            if 'Begin Path' in annot_df.columns:
+            recording_col_annot = self.get_column_name("Recording", prediction=False)
+            if recording_col_annot in annot_df.columns:
+                annot_df['recording_filename'] = self._extract_recording_filename(annot_df[recording_col_annot])
+            elif 'Begin Path' in annot_df.columns:
                 annot_df['recording_filename'] = self._extract_recording_filename(annot_df['Begin Path'])
-            elif 'Begin File' in annot_df.columns:
-                annot_df['recording_filename'] = self._extract_recording_filename(annot_df['Begin File'])
             else:
                 annot_df['recording_filename'] = self._extract_recording_filename_from_filename(annot_df['source_file'])
 
             # Apply class mapping to prediction files only
             if self.class_mapping:
-                pred_df[self.column_name_predictions] = pred_df[
-                    self.column_name_predictions
+                class_col_pred = self.get_column_name("Class", prediction=True)
+                pred_df[class_col_pred] = pred_df[
+                    class_col_pred
                 ].apply(lambda x: self.class_mapping.get(x, x))
 
             # Collect all classes from both prediction and annotation
-            pred_classes = set(pred_df[self.column_name_predictions].unique())
-            annot_classes = set(annot_df[self.column_name_annotations].unique())
+            class_col_pred = self.get_column_name("Class", prediction=True)
+            class_col_annot = self.get_column_name("Class", prediction=False)
+
+            pred_classes = set(pred_df[class_col_pred].unique())
+            annot_classes = set(annot_df[class_col_annot].unique())
             all_classes = pred_classes.union(annot_classes)
             self.classes = tuple(sorted(all_classes))
 
@@ -192,12 +234,15 @@ class DataProcessor:
                 annot_sub_df = annot_df[annot_df['recording_filename'] == recording_filename]
 
                 # Determine file duration
-                file_duration = None
-                if 'File Duration (s)' in pred_sub_df.columns and not pred_sub_df['File Duration (s)'].isnull().all():
-                    file_duration = pred_sub_df['File Duration (s)'].iloc[0]
+                file_duration_col_pred = self.get_column_name("Duration", prediction=True)
+                end_time_col_pred = self.get_column_name("End Time", prediction=True)
+                end_time_col_annot = self.get_column_name("End Time", prediction=False)
+
+                if file_duration_col_pred in pred_sub_df.columns and not pred_sub_df[file_duration_col_pred].isnull().all():
+                    file_duration = pred_sub_df[file_duration_col_pred].iloc[0]
                 else:
-                    pred_max_time = pred_sub_df['End Time (s)'].max() if not pred_sub_df.empty else 0
-                    annot_max_time = annot_sub_df['End Time (s)'].max() if not annot_sub_df.empty else 0
+                    pred_max_time = pred_sub_df[end_time_col_pred].max() if not pred_sub_df.empty else 0
+                    annot_max_time = annot_sub_df[end_time_col_annot].max() if not annot_sub_df.empty else 0
                     file_duration = max(pred_max_time, annot_max_time)
 
                 # Initialize the DataFrame for sampled intervals, including all classes
@@ -312,11 +357,18 @@ class DataProcessor:
         """
         Updates the samples_df with prediction confidence scores from pred_df.
         """
+
+        class_col = self.get_column_name("Class", prediction=True)
+        start_time_col = self.get_column_name("Start Time", prediction=True)
+        end_time_col = self.get_column_name("End Time", prediction=True)
+        confidence_col = self.get_column_name("Confidence", prediction=True)
+
         for _, row in pred_df.iterrows():
-            class_name = row[self.column_name_predictions]
-            begin_time = row["Begin Time (s)"]
-            end_time = row["End Time (s)"]
-            confidence = row["Confidence"]
+            class_name = row[class_col]
+            begin_time = row[start_time_col]
+            end_time = row[end_time_col]
+            confidence = row[confidence_col]
+
             sample_indices = samples_df[
                 (samples_df["start_time"] <= begin_time)
                 & (samples_df["end_time"] >= end_time)
@@ -330,22 +382,47 @@ class DataProcessor:
         """
         Updates the samples_df with annotations from annot_df.
         """
+
+        class_col = self.get_column_name("Class", prediction=False)
+        start_time_col = self.get_column_name("Start Time", prediction=False)
+        end_time_col = self.get_column_name("End Time", prediction=False)
+
         for _, row in annot_df.iterrows():
-            class_name = row[self.column_name_annotations]
-            begin_time = row["Begin Time (s)"]
-            end_time = row["End Time (s)"]
+            class_name = row[class_col]
+            begin_time = row[start_time_col]
+            end_time = row[end_time_col]
+
             sample_indices = samples_df[
                 (
-                        samples_df["start_time"]
-                        <= end_time - self.min_overlap
-                )
-                & (
-                        samples_df["end_time"]
-                        >= begin_time + self.min_overlap
+                    samples_df["start_time"] <= end_time - self.min_overlap
+                ) & (
+                    samples_df["end_time"] >= begin_time + self.min_overlap
                 )
                 ].index
             for i in sample_indices:
                 samples_df.loc[i, f"{class_name}_annotation"] = 1
+
+    def get_column_name(self, field_name: str, prediction=True) -> str:
+        """
+        Retrieves the column name for a given field, considering user-specified and default mappings.
+
+        Args:
+            field_name (str): The logical name of the field (e.g., "Class", "Start Time").
+            prediction (bool, optional): Whether to retrieve from predictions or annotations. Defaults to True.
+
+        Returns:
+            str: The actual column name in the DataFrame.
+        """
+        if prediction:
+            return self.columns_predictions.get(
+                field_name,
+                self.default_columns_predictions.get(field_name, field_name)
+            )
+        else:
+            return self.columns_annotations.get(
+                field_name,
+                self.default_columns_annotations.get(field_name, field_name)
+            )
 
     def get_sample_data(self) -> pd.DataFrame:
         """
