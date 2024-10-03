@@ -34,6 +34,7 @@ from PySide6.QtGui import (
     QColor,
     QStandardItemModel,
 )
+import torch
 
 from bapat.preprocessing.data_processing import DataProcessor
 from bapat.assessment.performance_assessor import PerformanceAssessor
@@ -405,6 +406,27 @@ class PerformanceApp(QWidget):
         """
         )
 
+        # Recording Selection Label and ComboBox
+        select_recordings_label = QLabel("Select Recordings:")
+        self.select_recordings_combobox = CheckableComboBox()
+        self.select_recordings_combobox.setFixedWidth(200)
+        self.select_recordings_combobox.checkedItemsChanged.connect(
+            self.reset_results
+        )  # Connect signal
+        # Add tooltip to the select_recordings_combobox
+        self.select_recordings_combobox.setToolTip(
+            "Select the recordings for which you want to calculate the metrics."
+        )
+        self.select_recordings_combobox.setStyleSheet(
+            """
+            QToolTip {
+                background-color: #2C3E50;  /* Darker background */
+                color: white;  /* White text */
+                border: 1px solid #1E3A5F;
+            }
+        """
+        )
+
         # Create the mapping_layout
         mapping_layout = QHBoxLayout()
 
@@ -417,10 +439,12 @@ class PerformanceApp(QWidget):
         left_layout.addWidget(self.mapping_button)
         left_layout.setAlignment(Qt.AlignLeft)
 
-        # Right side layout for Select Classes
+        # Right side layout for Select Classes and Recordings
         right_layout = QHBoxLayout()
         right_layout.addWidget(select_classes_label)
         right_layout.addWidget(self.select_classes_combobox)
+        right_layout.addWidget(select_recordings_label)
+        right_layout.addWidget(self.select_recordings_combobox)
         right_layout.setAlignment(Qt.AlignRight)
 
         # Add layouts to mapping_layout
@@ -1066,13 +1090,13 @@ class PerformanceApp(QWidget):
                 # Populate classes in the combo box
                 self.populate_classes_combobox(self.processor.classes)
 
+                # Get unique recording filenames
+                recordings = self.processor.samples_df["filename"].unique()
+                self.populate_recordings_combobox(recordings)
+
             except Exception as e:
                 self.results_text.setText(f"Error initializing DataProcessor: {e}")
                 return False  # Exit if initialization fails
-
-        # Get predictions and labels from the processor
-        self.predictions = self.processor.get_prediction_tensor()
-        self.labels = self.processor.get_label_tensor()
 
         # Get selected classes
         selected_classes = self.select_classes_combobox.checkedItems()
@@ -1080,14 +1104,49 @@ class PerformanceApp(QWidget):
             self.results_text.setText("Please select at least one class.")
             return False
 
-        # Filter predictions and labels for selected classes
-        class_indices = [
-            i for i, cls in enumerate(self.processor.classes) if cls in selected_classes
+        # Get selected recordings
+        selected_recordings = self.select_recordings_combobox.checkedItems()
+        if not selected_recordings:
+            self.results_text.setText("Please select at least one recording.")
+            return False
+
+        # Filter samples_df to include only selected recordings
+        filtered_samples_df = self.processor.samples_df[
+            self.processor.samples_df["filename"].isin(selected_recordings)
         ]
-        self.predictions = self.predictions[:, class_indices]
-        self.labels = self.labels[:, class_indices]
-        classes = tuple(self.processor.classes[i] for i in class_indices)
-        num_classes = len(classes)
+
+        # Check if selected classes are present in the data
+        available_classes = [
+            cls
+            for cls in selected_classes
+            if f"{cls}_confidence" in filtered_samples_df.columns
+        ]
+        if not available_classes:
+            self.results_text.setText("Selected classes not found in the data.")
+            return False
+
+        num_classes = len(available_classes)
+
+        # Extract the predictions and labels for selected classes and recordings
+        try:
+            self.predictions = torch.tensor(
+                filtered_samples_df[
+                    [f"{label}_confidence" for label in available_classes]
+                ].values,
+                dtype=torch.float32,
+            )
+
+            self.labels = torch.tensor(
+                filtered_samples_df[
+                    [f"{label}_annotation" for label in available_classes]
+                ].values,
+                dtype=torch.int64,
+            )
+        except KeyError as e:
+            self.results_text.setText(f"Error: {e}")
+            return False
+
+        classes = tuple(available_classes)
 
         # Determine the task type (binary or multilabel)
         task = "binary" if num_classes == 1 else "multilabel"
@@ -1153,6 +1212,21 @@ class PerformanceApp(QWidget):
             self.select_classes_combobox.addItem(class_name)
             item = self.select_classes_combobox.model().item(
                 self.select_classes_combobox.count() - 1, 0
+            )
+            item.setCheckState(Qt.Checked)  # Default to selected
+
+    def populate_recordings_combobox(self, recordings):
+        self.select_recordings_combobox.clearItems()
+        # Add 'Select All' option
+        self.select_recordings_combobox.addItem("Select All")
+        select_all_item = self.select_recordings_combobox.model().item(0, 0)
+        select_all_item.setCheckState(Qt.Unchecked)
+
+        # Add recording items
+        for recording_name in recordings:
+            self.select_recordings_combobox.addItem(recording_name)
+            item = self.select_recordings_combobox.model().item(
+                self.select_recordings_combobox.count() - 1, 0
             )
             item.setCheckState(Qt.Checked)  # Default to selected
 
