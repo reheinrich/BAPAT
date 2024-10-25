@@ -36,8 +36,10 @@ from PySide6.QtGui import (
 )
 import torch
 
-from bapat.preprocessing.data_processing import DataProcessor
-from bapat.assessment.performance_assessor import PerformanceAssessor
+# from bapat.preprocessing.data_processor import DataProcessor
+# from bapat.assessment.performance_assessor import PerformanceAssessor
+from preprocessing.data_processor import DataProcessor
+from assessment.performance_assessor import PerformanceAssessor
 
 
 matplotlib.use("QtAgg")  # Set the Matplotlib backend to QtAgg
@@ -1090,6 +1092,8 @@ class PerformanceApp(QWidget):
                 # Populate classes in the combo box
                 self.populate_classes_combobox(self.processor.classes)
 
+                print(self.processor.samples_df)
+
                 # Get unique recording filenames
                 recordings = self.processor.samples_df["filename"].unique()
                 self.populate_recordings_combobox(recordings)
@@ -1110,43 +1114,18 @@ class PerformanceApp(QWidget):
             self.results_text.setText("Please select at least one recording.")
             return False
 
-        # Filter samples_df to include only selected recordings
-        filtered_samples_df = self.processor.samples_df[
-            self.processor.samples_df["filename"].isin(selected_recordings)
-        ]
-
-        # Check if selected classes are present in the data
-        available_classes = [
-            cls
-            for cls in selected_classes
-            if f"{cls}_confidence" in filtered_samples_df.columns
-        ]
-        if not available_classes:
-            self.results_text.setText("Selected classes not found in the data.")
-            return False
-
-        num_classes = len(available_classes)
-
-        # Extract the predictions and labels for selected classes and recordings
+        # Use DataProcessor to get filtered tensors
         try:
-            self.predictions = torch.tensor(
-                filtered_samples_df[
-                    [f"{label}_confidence" for label in available_classes]
-                ].values,
-                dtype=torch.float32,
+            self.predictions, self.labels, classes = (
+                self.processor.get_filtered_tensors(
+                    selected_classes, selected_recordings
+                )
             )
-
-            self.labels = torch.tensor(
-                filtered_samples_df[
-                    [f"{label}_annotation" for label in available_classes]
-                ].values,
-                dtype=torch.int64,
-            )
-        except KeyError as e:
-            self.results_text.setText(f"Error: {e}")
+        except ValueError as e:
+            self.results_text.setText(str(e))
             return False
 
-        classes = tuple(available_classes)
+        num_classes = len(classes)
 
         # Determine the task type (binary or multilabel)
         task = "binary" if num_classes == 1 else "multilabel"
@@ -1173,7 +1152,7 @@ class PerformanceApp(QWidget):
             threshold=self.threshold_slider.value() / 100.0,
             classes=classes,
             task=task,
-            metrics=metrics,
+            metrics_list=metrics,
         )
 
         return True  # Indicate successful update
