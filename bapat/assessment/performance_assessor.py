@@ -6,9 +6,10 @@ Defines the PerformanceAssessor class that orchestrates the calculation and plot
 
 from typing import Literal, Optional, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from bapat.assessment import metrics
 from bapat.assessment import plotting
@@ -25,7 +26,7 @@ class PerformanceAssessor:
         num_classes: int,
         threshold: float = 0.5,
         classes: Optional[Tuple[str, ...]] = None,
-        task: Literal["binary", "multiclass", "multilabel"] = "multilabel",
+        task: Literal["binary", "multilabel"] = "multilabel",
         metrics_list: Tuple[str, ...] = (
             "recall",
             "precision",
@@ -42,7 +43,7 @@ class PerformanceAssessor:
             num_classes (int): The number of classes in the classification problem.
             threshold (float): The threshold for considering a label as positive.
             classes (Optional[Tuple[str, ...]]): Optional tuple of class names.
-            task (Literal["binary", "multiclass", "multilabel"]): The type of classification task.
+            task (Literal["binary", "multilabel"]): The type of classification task.
             metrics_list (Tuple[str, ...]): Tuple of metric names to compute.
         """
         # Validate inputs
@@ -79,83 +80,83 @@ class PerformanceAssessor:
 
     def calculate_metrics(
         self,
-        predictions: torch.Tensor,
-        labels: torch.Tensor,
+        predictions: np.ndarray,
+        labels: np.ndarray,
         per_class_metrics: bool = False,
     ) -> pd.DataFrame:
         """
         Calculate multiple performance metrics for the given predictions and labels.
 
         Args:
-            predictions (torch.Tensor): Model output predictions.
-            labels (torch.Tensor): Ground truth labels.
+            predictions (np.ndarray): Model output predictions as a NumPy array.
+            labels (np.ndarray): Ground truth labels as a NumPy array.
             per_class_metrics (bool): If True, returns metrics for each class individually.
 
         Returns:
             pd.DataFrame: A DataFrame containing the computed metrics.
         """
-        averaging_method = None if per_class_metrics else "macro"
+        # Determine the averaging method
+        if per_class_metrics and self.num_classes == 1:
+            averaging_method = "macro"
+        else:
+            averaging_method = None if per_class_metrics else "macro"
+
         metrics_results = {}
 
         for metric_name in self.metrics_list:
             if metric_name == "recall":
                 result = metrics.calculate_recall(
-                    predictions,
-                    labels,
-                    self.task,
-                    self.num_classes,
-                    self.threshold,
-                    averaging_method,
+                    predictions=predictions,
+                    labels=labels,
+                    task=self.task,
+                    threshold=self.threshold,
+                    averaging_method=averaging_method,
                 )
-                metrics_results["Recall"] = result  # result.cpu().numpy()
+                metrics_results["Recall"] = np.atleast_1d(result)
             elif metric_name == "precision":
                 result = metrics.calculate_precision(
-                    predictions,
-                    labels,
-                    self.task,
-                    self.num_classes,
-                    self.threshold,
-                    averaging_method,
+                    predictions=predictions,
+                    labels=labels,
+                    task=self.task,
+                    threshold=self.threshold,
+                    averaging_method=averaging_method,
                 )
-                metrics_results["Precision"] = result  # result.cpu().numpy()
+                metrics_results["Precision"] = np.atleast_1d(result)
             elif metric_name == "f1":
                 result = metrics.calculate_f1_score(
-                    predictions,
-                    labels,
-                    self.task,
-                    self.num_classes,
-                    self.threshold,
-                    averaging_method,
+                    predictions=predictions,
+                    labels=labels,
+                    task=self.task,
+                    threshold=self.threshold,
+                    averaging_method=averaging_method,
                 )
-                metrics_results["F1"] = result  # result.cpu().numpy()
+                metrics_results["F1"] = np.atleast_1d(result)
             elif metric_name == "ap":
                 result = metrics.calculate_average_precision(
-                    predictions,
-                    labels,
-                    self.task,
-                    self.num_classes,
-                    averaging_method,
+                    predictions=predictions,
+                    labels=labels,
+                    task=self.task,
+                    averaging_method=averaging_method,
                 )
-                metrics_results["AP"] = result  # result.cpu().numpy()
+                metrics_results["AP"] = np.atleast_1d(result)
             elif metric_name == "auroc":
                 result = metrics.calculate_auroc(
-                    predictions,
-                    labels,
-                    self.task,
-                    self.num_classes,
-                    averaging_method,
+                    predictions=predictions,
+                    labels=labels,
+                    task=self.task,
+                    averaging_method=averaging_method,
                 )
-                metrics_results["AUROC"] = result  # result.cpu().numpy()
+                metrics_results["AUROC"] = np.atleast_1d(result)
             elif metric_name == "accuracy":
                 result = metrics.calculate_accuracy(
-                    predictions,
-                    labels,
-                    self.task,
-                    self.num_classes,
-                    self.threshold,
-                    averaging_method,
+                    predictions=predictions,
+                    labels=labels,
+                    task=self.task,
+                    num_classes=self.num_classes,
+                    threshold=self.threshold,
+                    averaging_method=averaging_method,
                 )
-                metrics_results["Accuracy"] = result  # result.cpu().numpy()
+                metrics_results["Accuracy"] = np.atleast_1d(result)
 
         if per_class_metrics:
             columns = (
@@ -166,20 +167,21 @@ class PerformanceAssessor:
         else:
             columns = ["Overall"]
 
-        return pd.DataFrame.from_dict(metrics_results, orient="index", columns=columns)
+        metrics_data = {key: np.atleast_1d(value) for key, value in metrics_results.items()}
+        return pd.DataFrame.from_dict(metrics_data, orient="index", columns=columns)
 
     def plot_metrics(
         self,
-        predictions: torch.Tensor,
-        labels: torch.Tensor,
+        predictions: np.ndarray,
+        labels: np.ndarray,
         per_class_metrics: bool = False,
     ) -> None:
         """
         Plot performance metrics for the given predictions and labels.
 
         Args:
-            predictions (torch.Tensor): Model output predictions.
-            labels (torch.Tensor): Ground truth labels.
+            predictions (np.ndarray): Model output predictions as a NumPy array.
+            labels (np.ndarray): Ground truth labels as a NumPy array.
             per_class_metrics (bool): If True, plots metrics for each class individually.
             cmap (str): Name of the colormap to be used.
         """
@@ -192,16 +194,16 @@ class PerformanceAssessor:
 
     def plot_metrics_all_thresholds(
         self,
-        predictions: torch.Tensor,
-        labels: torch.Tensor,
+        predictions: np.ndarray,
+        labels: np.ndarray,
         per_class_metrics: bool = False,
     ) -> None:
         """
         Plot performance metrics across thresholds for the given predictions and labels.
 
         Args:
-            predictions (torch.Tensor): Model output predictions.
-            labels (torch.Tensor): Ground truth labels.
+            predictions (np.ndarray): Model output predictions as a NumPy array.
+            labels (np.ndarray): Ground truth labels as a NumPy array.
             per_class_metrics (bool): If True, plots metrics for each class individually.
             cmap (str): Name of the colormap to be used.
         """
@@ -270,27 +272,21 @@ class PerformanceAssessor:
 
     def plot_confusion_matrix(
         self,
-        predictions: torch.Tensor,
-        labels: torch.Tensor,
+        predictions: np.ndarray,
+        labels: np.ndarray,
     ) -> None:
         """
         Plot confusion matrices for each class using scikit-learn's ConfusionMatrixDisplay.
 
         Args:
-            predictions (torch.Tensor): Model output predictions.
-            labels (torch.Tensor): Ground truth labels.
+            predictions (np.ndarray): Model output predictions as a NumPy array.
+            labels (np.ndarray): Ground truth labels as a NumPy array.
         """
-        import matplotlib.pyplot as plt
-        from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-
-        # Convert tensors to NumPy arrays
-        preds = predictions.detach().cpu().numpy()
-        target = labels.detach().cpu().numpy()
 
         if self.task == "binary":
             # Apply threshold to get predicted class labels
-            y_pred = (preds >= self.threshold).astype(int).flatten()
-            y_true = target.flatten()
+            y_pred = (predictions >= self.threshold).astype(int).flatten()
+            y_true = labels.flatten()
             # Compute normalized confusion matrix
             conf_mat = confusion_matrix(y_true, y_pred, normalize="true")
             conf_mat = np.round(conf_mat, 2)  # Round to 2 decimals
@@ -305,37 +301,10 @@ class PerformanceAssessor:
             ax.set_title("Confusion Matrix")
             plt.show()
 
-        elif self.task == "multiclass":
-            # For multiclass, take the class with the highest probability
-            y_pred = np.argmax(preds, axis=1)
-            y_true = target.flatten()
-            # Compute normalized confusion matrix
-            conf_mat = confusion_matrix(y_true, y_pred, normalize="true")
-            conf_mat = np.round(conf_mat, 2)  # Round to 2 decimals
-            # Plot confusion matrix
-            class_names = (
-                self.classes
-                if self.classes
-                else [f"Class {i}" for i in range(self.num_classes)]
-            )
-            disp = ConfusionMatrixDisplay(
-                confusion_matrix=conf_mat, display_labels=class_names
-            )
-            fig, ax = plt.subplots(figsize=(8, 8))
-            disp.plot(
-                cmap="Reds",
-                ax=ax,
-                xticks_rotation="vertical",
-                colorbar=False,
-                values_format=".2f",
-            )  # .2f for 2 decimal places
-            ax.set_title("Confusion Matrix")
-            plt.show()
-
         elif self.task == "multilabel":
             # Apply threshold to get predicted class labels
-            y_pred = (preds >= self.threshold).astype(int)
-            y_true = target
+            y_pred = (predictions >= self.threshold).astype(int)
+            y_true = labels
             # Compute confusion matrices for each class
             conf_mats = []
             class_names = (

@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import torch
 
 from bapat.preprocessing.utils import (
     extract_recording_filename,
@@ -109,8 +108,8 @@ class DataProcessor:
 
         # Placeholder for samples DataFrame and tensors
         self.samples_df: pd.DataFrame = pd.DataFrame()
-        self.prediction_tensors: torch.Tensor = torch.Tensor()
-        self.label_tensors: torch.Tensor = torch.Tensor()
+        self.prediction_tensors: np.ndarray = np.array([])
+        self.label_tensors: np.ndarray = np.array([])
 
         # Ensure essential columns are provided and parameters are valid
         self._validate_columns()
@@ -314,11 +313,6 @@ class DataProcessor:
             self.samples_df = pd.concat(
                 [self.samples_df, samples_df], ignore_index=True
             )
-
-        print(
-            f"Samples DataFrame columns after initialization: {self.samples_df.columns}"
-        )
-        print(f"Samples DataFrame head after initialization: {self.samples_df.head()}")
 
     def process_recording(
         self, recording_filename: str, pred_df: pd.DataFrame, annot_df: pd.DataFrame
@@ -535,10 +529,10 @@ class DataProcessor:
                 samples_df.loc[i, f"{class_name}_annotation"] = 1
 
     def create_tensors(self):
-        """Creates PyTorch tensors from the samples DataFrame."""
+        """Creates numpy arrays from the samples DataFrame."""
         if self.samples_df.empty:
-            self.prediction_tensors = torch.empty(0, len(self.classes))
-            self.label_tensors = torch.empty(0, len(self.classes))
+            self.prediction_tensors = np.empty((0, len(self.classes)), dtype=np.float32)
+            self.label_tensors = np.empty((0, len(self.classes)), dtype=np.int64)
             return
 
         # Check for NaN values in annotation columns
@@ -551,32 +545,13 @@ class DataProcessor:
         if self.samples_df[confidence_columns].isnull().values.any():
             raise ValueError("NaN values found in confidence columns.")
 
-        # Create tensors
-        predictions = self.samples_df[confidence_columns].to_numpy(dtype=np.float32)
-        labels = self.samples_df[annotation_columns].to_numpy(dtype=np.int64)
-
-        self.prediction_tensors = torch.from_numpy(predictions)
-        self.label_tensors = torch.from_numpy(labels)
-
-        def create_tensors(self) -> None:
-            """
-            Creates the prediction and label tensors from the samples DataFrame.
-
-            The tensors are created from the confidence scores and annotations for each class.
-            """
-            self.prediction_tensors = torch.tensor(
-                self.samples_df[
-                    [f"{label}_confidence" for label in self.classes]
-                ].values,
-                dtype=torch.float32,
-            )
-
-            self.label_tensors = torch.tensor(
-                self.samples_df[
-                    [f"{label}_annotation" for label in self.classes]
-                ].values,
-                dtype=torch.int64,
-            )
+        # Create numpy arrays
+        self.prediction_tensors = self.samples_df[confidence_columns].to_numpy(
+            dtype=np.float32
+        )
+        self.label_tensors = self.samples_df[annotation_columns].to_numpy(
+            dtype=np.int64
+        )
 
     def get_column_name(self, field_name: str, prediction: bool = True) -> str:
         """Get the column name from the appropriate mapping."""
@@ -589,8 +564,8 @@ class DataProcessor:
 
         if field_name in mapping and mapping[field_name] is not None:
             return mapping[field_name]
-        else:
-            return field_name
+
+        return field_name
 
     def get_sample_data(self) -> pd.DataFrame:
         """
@@ -605,7 +580,7 @@ class DataProcessor:
         self,
         selected_classes: Optional[List[str]] = None,
         selected_recordings: Optional[List[str]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, Tuple[str]]:
+    ) -> Tuple[np.ndarray, np.ndarray, Tuple[str]]:
         """
         Filters the tensors based on selected classes and recordings.
 
@@ -654,4 +629,4 @@ class DataProcessor:
         predictions = filtered_samples[confidence_columns].to_numpy(dtype=np.float32)
         labels = filtered_samples[annotation_columns].to_numpy(dtype=np.int64)
 
-        return torch.from_numpy(predictions), torch.from_numpy(labels), classes
+        return predictions, labels, classes
