@@ -702,8 +702,9 @@ class TestDataProcessorValidateParameters:
                 sample_duration=-1,
             )
 
+    @patch.object(DataProcessor, "process_data")
     @patch.object(DataProcessor, "load_data")
-    def test_sample_duration_positive(self, mock_load_data):
+    def test_sample_duration_positive(self, mock_load_data, mock_process_data):
         """Test positive sample_duration does not raise."""
         try:
             DataProcessor(
@@ -734,8 +735,9 @@ class TestDataProcessorValidateParameters:
                 min_overlap=1.1,
             )
 
+    @patch.object(DataProcessor, "process_data")
     @patch.object(DataProcessor, "load_data")
-    def test_min_overlap_zero(self, mock_load_data):
+    def test_min_overlap_zero(self, mock_load_data, mock_process_data):
         """Test min_overlap=0 does not raise."""
         try:
             DataProcessor(
@@ -746,8 +748,9 @@ class TestDataProcessorValidateParameters:
         except ValueError:
             pytest.fail("Unexpected ValueError raised with min_overlap=0")
 
+    @patch.object(DataProcessor, "process_data")
     @patch.object(DataProcessor, "load_data")
-    def test_min_overlap_one(self, mock_load_data):
+    def test_min_overlap_one(self, mock_load_data, mock_process_data):
         """Test min_overlap=1 does not raise."""
         try:
             DataProcessor(
@@ -758,8 +761,9 @@ class TestDataProcessorValidateParameters:
         except ValueError:
             pytest.fail("Unexpected ValueError raised with min_overlap=1")
 
+    @patch.object(DataProcessor, "process_data")
     @patch.object(DataProcessor, "load_data")
-    def test_recording_duration_none(self, mock_load_data):
+    def test_recording_duration_none(self, mock_load_data, mock_process_data):
         """Test recording_duration=None does not raise."""
         try:
             DataProcessor(
@@ -793,8 +797,9 @@ class TestDataProcessorValidateParameters:
 
 class TestDataProcessorValidateColumns:
 
+    @patch.object(DataProcessor, "process_data")
     @patch.object(DataProcessor, "load_data")
-    def test_columns_all_required_present(self, mock_load_data):
+    def test_columns_all_required_present(self, mock_load_data, mock_process_data):
         """Test when all required columns are present and not None."""
         try:
             DataProcessor(
@@ -2061,10 +2066,10 @@ class TestCreateTensors:
         self.dp.create_tensors()
         assert self.dp.prediction_tensors.shape == (2, 2)
         assert self.dp.label_tensors.shape == (2, 2)
-        expected_pred = torch.tensor([[0.8, 0.2], [0.5, 0.7]])
-        expected_label = torch.tensor([[1, 0], [0, 1]])
-        assert torch.equal(self.dp.prediction_tensors, expected_pred)
-        assert torch.equal(self.dp.label_tensors, expected_label)
+        expected_pred = np.array([[0.8, 0.2], [0.5, 0.7]], dtype=np.float32)
+        expected_label = np.array([[1, 0], [0, 1]], dtype=np.int64)
+        np.testing.assert_array_equal(self.dp.prediction_tensors, expected_pred)
+        np.testing.assert_array_equal(self.dp.label_tensors, expected_label)
 
     def test_missing_confidence_columns(self):
         """Test when samples_df is missing _confidence columns."""
@@ -2497,8 +2502,9 @@ class TestGetFilteredTensors:
         predictions, labels, classes = self.dp.get_filtered_tensors(
             selected_classes=["A"], selected_recordings=["rec1"]
         )
-        assert torch.isnan(predictions[0, 0])
+        assert np.isnan(predictions[0, 0])
         assert labels[0, 0] == 1
+        assert classes == ("A",)
 
     def test_partially_available_classes(self):
         """Test when some selected classes are present."""
