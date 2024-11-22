@@ -1,3 +1,5 @@
+# gui_app.py
+
 import json
 import os
 import sys
@@ -35,19 +37,12 @@ from PySide6.QtGui import (
     QStandardItemModel,
 )
 
-# from bapat.preprocessing.data_processor import DataProcessor
-# from bapat.assessment.performance_assessor import PerformanceAssessor
-
-from preprocessing.data_processor import DataProcessor
-from assessment.performance_assessor import PerformanceAssessor
-
-
+from core import process_data
 
 matplotlib.use("QtAgg")  # Set the Matplotlib backend to QtAgg
 
-
 # Disable interactive mode to avoid automatic figure creation
-plt.ioff()  # Add this line to disable the interactive mode
+plt.ioff()
 
 
 class CheckableComboBox(QComboBox):
@@ -930,16 +925,12 @@ class PerformanceApp(QWidget):
         if not self.update_processor_and_performance_assessor():
             return  # Exit if updating parameters failed
 
-        # Calculate metrics
+        # Display metrics
         self.display_metrics()
 
     def display_metrics(self):
-        threshold = self.threshold_slider.value() / 100.0
-        self.pa.threshold = threshold
-
-        per_class = self.class_wise_checkbox.isChecked()
-
         # Calculate metrics
+        per_class = self.class_wise_checkbox.isChecked()
         metrics_df = self.pa.calculate_metrics(
             self.predictions, self.labels, per_class_metrics=per_class
         )
@@ -999,16 +990,6 @@ class PerformanceApp(QWidget):
             )
             return False  # Exit if required paths are not provided
 
-        # Load class mapping if provided
-        class_mapping = None
-        if mapping_path:
-            try:
-                with open(mapping_path, "r") as f:
-                    class_mapping = json.load(f)
-            except Exception as e:
-                self.results_text.setText(f"Error loading class mapping file: {e}")
-                return False  # Exit if loading the mapping fails
-
         recording_duration_input = self.recording_duration_input.text()
         if recording_duration_input.strip() == "":
             recording_duration = None
@@ -1020,19 +1001,6 @@ class PerformanceApp(QWidget):
                     "Please enter a valid number for Recording Duration."
                 )
                 return False
-
-        # Check if the paths refer to files or directories
-        annotation_dir, annotation_file = (
-            (os.path.dirname(annotation_path), os.path.basename(annotation_path))
-            if os.path.isfile(annotation_path)
-            else (annotation_path, None)
-        )
-
-        prediction_dir, prediction_file = (
-            (os.path.dirname(prediction_path), os.path.basename(prediction_path))
-            if os.path.isfile(prediction_path)
-            else (prediction_path, None)
-        )
 
         # Collect selected columns for annotations
         columns_annotations = {}
@@ -1052,10 +1020,41 @@ class PerformanceApp(QWidget):
             else:
                 columns_predictions[label_text] = selected_column
 
-        # Determine if reinitialization is necessary
+        # Get selected classes
+        selected_classes = self.select_classes_combobox.checkedItems()
+        if not selected_classes:
+            selected_classes = None  # Select all if none selected
+
+        # Get selected recordings
+        selected_recordings = self.select_recordings_combobox.checkedItems()
+        if not selected_recordings:
+            selected_recordings = None  # Select all if none selected
+
+        # Extract selected metrics
+        selected_metrics = []
+        valid_metrics = {
+            "accuracy": "accuracy",
+            "recall": "recall",
+            "precision": "precision",
+            "f1 score": "f1",
+            "average precision (ap)": "ap",
+            "auroc": "auroc",
+        }
+        for metric_name_lower, checkbox in self.metrics_checkboxes.items():
+            if checkbox.isChecked():
+                selected_metrics.append(valid_metrics[metric_name_lower])
+
+        metrics = tuple(selected_metrics)
+
+        # Threshold
+        threshold = self.threshold_slider.value() / 100.0
+
+        # Class-wise metrics
+        class_wise = self.class_wise_checkbox.isChecked()
+
+        # Check if reinitialization is necessary
         if (
-            self.processor is None
-            or self.previous_annotation_path != annotation_path
+            self.previous_annotation_path != annotation_path
             or self.previous_prediction_path != prediction_path
             or self.previous_mapping_path != mapping_path
             or self.previous_sample_duration != sample_duration
@@ -1064,9 +1063,28 @@ class PerformanceApp(QWidget):
             or self.previous_columns_annotations != columns_annotations
             or self.previous_recording_duration != recording_duration
         ):
-
             try:
-                # Initialize DataProcessor
+                # Initialize DataProcessor to get available classes and recordings
+                from preprocessing.data_processor import DataProcessor
+
+                if mapping_path:
+                    with open(mapping_path, "r") as f:
+                        class_mapping = json.load(f)
+                else:
+                    class_mapping = None
+
+                annotation_dir, annotation_file = (
+                    (os.path.dirname(annotation_path), os.path.basename(annotation_path))
+                    if os.path.isfile(annotation_path)
+                    else (annotation_path, None)
+                )
+
+                prediction_dir, prediction_file = (
+                    (os.path.dirname(prediction_path), os.path.basename(prediction_path))
+                    if os.path.isfile(prediction_path)
+                    else (prediction_path, None)
+                )
+
                 self.processor = DataProcessor(
                     prediction_directory_path=prediction_dir,
                     prediction_file_name=prediction_file,
@@ -1093,8 +1111,6 @@ class PerformanceApp(QWidget):
                 # Populate classes in the combo box
                 self.populate_classes_combobox(self.processor.classes)
 
-                print(self.processor.samples_df)
-
                 # Get unique recording filenames
                 recordings = self.processor.samples_df["filename"].unique()
                 self.populate_recordings_combobox(recordings)
@@ -1103,60 +1119,28 @@ class PerformanceApp(QWidget):
                 self.results_text.setText(f"Error initializing DataProcessor: {e}")
                 return False  # Exit if initialization fails
 
-        # Get selected classes
-        selected_classes = self.select_classes_combobox.checkedItems()
-        if not selected_classes:
-            self.results_text.setText("Please select at least one class.")
-            return False
-
-        # Get selected recordings
-        selected_recordings = self.select_recordings_combobox.checkedItems()
-        if not selected_recordings:
-            self.results_text.setText("Please select at least one recording.")
-            return False
-
-        # Use DataProcessor to get filtered tensors
+        # Now, call process_data() with selected classes and recordings
         try:
-            self.predictions, self.labels, classes = (
-                self.processor.get_filtered_tensors(
-                    selected_classes, selected_recordings
-                )
+            metrics_df, self.pa, self.predictions, self.labels = process_data(
+                annotation_path=annotation_path,
+                prediction_path=prediction_path,
+                mapping_path=mapping_path,
+                sample_duration=sample_duration,
+                min_overlap=min_overlap,
+                recording_duration=recording_duration,
+                columns_annotations=columns_annotations,
+                columns_predictions=columns_predictions,
+                selected_classes=selected_classes,
+                selected_recordings=selected_recordings,
+                metrics_list=metrics,
+                threshold=threshold,
+                class_wise=class_wise,
             )
-        except ValueError as e:
-            self.results_text.setText(str(e))
+        except Exception as e:
+            self.results_text.setText(f"Error processing data: {e}")
             return False
 
-        num_classes = len(classes)
-
-        # Determine the task type (binary or multilabel)
-        task = "binary" if num_classes == 1 else "multilabel"
-
-        # Extract selected metrics
-        selected_metrics = []
-        valid_metrics = {
-            "accuracy": "accuracy",
-            "recall": "recall",
-            "precision": "precision",
-            "f1 score": "f1",
-            "average precision (ap)": "ap",
-            "auroc": "auroc",
-        }
-        for metric_name_lower, checkbox in self.metrics_checkboxes.items():
-            if checkbox.isChecked():
-                selected_metrics.append(valid_metrics[metric_name_lower])
-
-        metrics = tuple(selected_metrics)
-
-        # Initialize PerformanceAssessor
-        self.pa = PerformanceAssessor(
-            num_classes=num_classes,
-            threshold=self.threshold_slider.value() / 100.0,
-            classes=classes,
-            task=task,
-            metrics_list=metrics,
-        )
-
-        return True  # Indicate successful update
+        return True
 
     def get_columns_from_files(self, directory_or_file):
         import pandas as pd
@@ -1185,7 +1169,7 @@ class PerformanceApp(QWidget):
         # Add 'Select All' option
         self.select_classes_combobox.addItem("Select All")
         select_all_item = self.select_classes_combobox.model().item(0, 0)
-        select_all_item.setCheckState(Qt.Unchecked)
+        select_all_item.setCheckState(Qt.Checked)  # Set 'Select All' to Checked
 
         # Add class items
         for class_name in classes:
@@ -1200,7 +1184,7 @@ class PerformanceApp(QWidget):
         # Add 'Select All' option
         self.select_recordings_combobox.addItem("Select All")
         select_all_item = self.select_recordings_combobox.model().item(0, 0)
-        select_all_item.setCheckState(Qt.Unchecked)
+        select_all_item.setCheckState(Qt.Checked)  # Set 'Select All' to Checked
 
         # Add recording items
         for recording_name in recordings:
@@ -1379,7 +1363,6 @@ def main():
     app.setFont(font)
 
     # Apply a global stylesheet for QPushButton and QToolButton
-
     app.setStyleSheet(
         """
         QPushButton:hover {
