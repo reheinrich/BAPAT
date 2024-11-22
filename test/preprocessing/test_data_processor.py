@@ -95,14 +95,43 @@ class TestDataProcessorInit:
                 sample_duration=-5,
             )
 
-    @patch.object(DataProcessor, "load_data")
-    def test_init_with_invalid_min_overlap(self, mock_load_data):
-        """Test initializing with invalid min_overlap."""
-        with pytest.raises(ValueError, match="Min overlap must be between 0 and 1"):
+        with pytest.raises(ValueError, match="Sample duration must be positive"):
             DataProcessor(
                 prediction_directory_path="",
                 annotation_directory_path="",
-                min_overlap=1.5,
+                sample_duration=0,
+            )
+
+        with pytest.raises(ValueError, match="Sample duration cannot exceed the recording duration."):
+            DataProcessor(
+                prediction_directory_path="",
+                annotation_directory_path="",
+                sample_duration=15,
+                recording_duration=10,  # sample_duration > recording_duration
+            )
+
+    @patch.object(DataProcessor, "load_data")
+    def test_init_with_invalid_min_overlap(self, mock_load_data):
+        """Test initializing with invalid min_overlap values."""
+        with pytest.raises(ValueError, match="Min overlap must be greater than 0."):
+            DataProcessor(
+                prediction_directory_path="",
+                annotation_directory_path="",
+                min_overlap=-5,
+            )
+
+        with pytest.raises(ValueError, match="Min overlap must be greater than 0."):
+            DataProcessor(
+                prediction_directory_path="",
+                annotation_directory_path="",
+                min_overlap=0,
+            )
+
+        with pytest.raises(ValueError, match="Min overlap cannot exceed the sample duration."):
+            DataProcessor(
+                prediction_directory_path="",
+                annotation_directory_path="",
+                min_overlap=6,  # Greater than default sample_duration=3
             )
 
     @patch("bapat.preprocessing.data_processor.read_and_concatenate_files_in_directory")

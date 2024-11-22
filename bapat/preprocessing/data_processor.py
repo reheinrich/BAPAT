@@ -131,12 +131,22 @@ class DataProcessor:
         self.create_tensors()
 
     def _validate_parameters(self):
+        # Validate sample duration
         if self.sample_duration <= 0:
-            raise ValueError("Sample duration must be positive")
-        if not (0 <= self.min_overlap <= 1):
-            raise ValueError("Min overlap must be between 0 and 1")
-        if self.recording_duration is not None and self.recording_duration <= 0:
-            raise ValueError("Recording duration must be positive")
+            raise ValueError("Sample duration must be positive.")
+
+        # Validate recording duration, if provided
+        if self.recording_duration is not None:
+            if self.recording_duration <= 0:
+                raise ValueError("Recording duration must be greater than 0.")
+            if self.sample_duration > self.recording_duration:
+                raise ValueError("Sample duration cannot exceed the recording duration.")
+
+        # Validate min overlap
+        if self.min_overlap <= 0:
+            raise ValueError("Min overlap must be greater than 0.")
+        if self.min_overlap > self.sample_duration:
+            raise ValueError("Min overlap cannot exceed the sample duration.")
 
     def _validate_columns(self) -> None:
         """
