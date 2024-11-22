@@ -35,8 +35,12 @@ from PySide6.QtGui import (
     QStandardItemModel,
 )
 
-from bapat.preprocessing.data_processor import DataProcessor
-from bapat.assessment.performance_assessor import PerformanceAssessor
+# from bapat.preprocessing.data_processor import DataProcessor
+# from bapat.assessment.performance_assessor import PerformanceAssessor
+
+from preprocessing.data_processor import DataProcessor
+from assessment.performance_assessor import PerformanceAssessor
+
 
 
 matplotlib.use("QtAgg")  # Set the Matplotlib backend to QtAgg

@@ -1,5 +1,10 @@
+# test_metrics.py
+
+"""
+Unit tests for the metrics module functions.
+"""
+
 import pytest
-import torch
 import numpy as np
 from bapat.assessment.metrics import (
     calculate_accuracy,
@@ -9,421 +14,405 @@ from bapat.assessment.metrics import (
     calculate_average_precision,
     calculate_auroc,
 )
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    average_precision_score,
+    roc_auc_score,
+)
 
 
 class TestCalculateAccuracy:
     def test_binary_classification_perfect(self):
-        predictions = torch.tensor([0.9, 0.1, 0.8, 0.2])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.9, 0.1, 0.8, 0.2])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_accuracy(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
+            num_classes=1,
             threshold=0.5,
             averaging_method="micro",
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_imperfect(self):
-        predictions = torch.tensor([0.6, 0.4, 0.3, 0.7])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.6, 0.4, 0.3, 0.7])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_accuracy(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
+            num_classes=1,
             threshold=0.5,
             averaging_method="micro",
         )
-        # Expected accuracy: 2 correct out of 4
         assert np.isclose(result, 0.5)
 
     def test_binary_classification_all_zeros(self):
-        predictions = torch.tensor([0.1, 0.2, 0.3, 0.4])
-        labels = torch.tensor([0, 0, 0, 0])
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
         result = calculate_accuracy(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
+            num_classes=1,
             threshold=0.5,
             averaging_method="micro",
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_all_ones(self):
-        predictions = torch.tensor([0.6, 0.7, 0.8, 0.9])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_accuracy(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
+            num_classes=1,
             threshold=0.5,
             averaging_method="micro",
         )
         assert np.isclose(result, 1.0)
 
-    def test_multiclass_classification_perfect(self):
-        predictions = torch.tensor([[0.1, 0.8, 0.1], [0.7, 0.2, 0.1], [0.1, 0.1, 0.8]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_accuracy(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-            averaging_method="micro",
-        )
-        assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_imperfect(self):
-        predictions = torch.tensor([[0.3, 0.5, 0.2], [0.2, 0.3, 0.5], [0.4, 0.4, 0.2]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_accuracy(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-            averaging_method="micro",
-        )
-        # Expected accuracy: 1 correct out of 3
-        assert np.isclose(result, 0.3333333333)
-
     def test_multilabel_classification_perfect(self):
-        predictions = torch.tensor([[0.9, 0.1], [0.2, 0.8], [0.8, 0.2]])
-        labels = torch.tensor([[1, 0], [0, 1], [1, 0]])
+        predictions = np.array([[0.9, 0.1], [0.2, 0.8], [0.8, 0.2]])
+        labels = np.array([[1, 0], [0, 1], [1, 0]])
+        num_classes = labels.shape[1]
         result = calculate_accuracy(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
+            num_classes=num_classes,
             threshold=0.5,
             averaging_method="micro",
         )
         assert np.isclose(result, 1.0)
 
     def test_multilabel_classification_imperfect(self):
-        predictions = torch.tensor([[0.6, 0.4], [0.4, 0.6], [0.5, 0.5]])
-        labels = torch.tensor([[1, 0], [0, 1], [1, 0]])
+        predictions = np.array([[0.6, 0.4], [0.4, 0.6], [0.5, 0.5]])
+        labels = np.array([[1, 0], [0, 1], [1, 0]])
+        num_classes = labels.shape[1]
         result = calculate_accuracy(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
+            num_classes=num_classes,
             threshold=0.5,
             averaging_method="micro",
         )
-        # Expected accuracy: 5 correct out of 6 = 0.8333333
-        assert np.isclose(result, 0.8333333)
+        expected_result = 5 / 6  # Total correct predictions over total elements
+        assert np.isclose(result, expected_result)
 
     def test_incorrect_shapes(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8])
-        labels = torch.tensor([1, 0])
-        with pytest.raises(RuntimeError, match="same shape"):
+        predictions = np.array([0.9, 0.2, 0.8])
+        labels = np.array([1, 0])
+        with pytest.raises(ValueError):
             calculate_accuracy(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
+                num_classes=1,
                 threshold=0.5,
             )
 
     def test_invalid_threshold(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8, 0.1])
-        labels = torch.tensor([1, 0, 1, 0])
-        with pytest.raises(
-            ValueError,
-            match="Expected argument `threshold` to be a float in the \\[0,1\\] range",
-        ):
+        predictions = np.array([0.9, 0.2, 0.8, 0.1])
+        labels = np.array([1, 0, 1, 0])
+        with pytest.raises(ValueError):
             calculate_accuracy(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
+                num_classes=1,
                 threshold=1.5,
             )
 
-    def test_non_tensor_inputs(self):
+    def test_non_array_inputs(self):
         predictions = [0.9, 0.2, 0.8, 0.1]
         labels = [1, 0, 1, 0]
-        with pytest.raises(AttributeError):
+        result = calculate_accuracy(
+            np.array(predictions),
+            np.array(labels),
+            task="binary",
+            num_classes=1,
+            threshold=0.5,
+        )
+        assert np.isclose(result, 1.0)
+
+    def test_empty_arrays(self):
+        predictions = np.array([])
+        labels = np.array([])
+        with pytest.raises(ValueError):
             calculate_accuracy(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
+                num_classes=1,
                 threshold=0.5,
             )
 
-    def test_empty_tensors(self):
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        with pytest.raises(RuntimeError):
-            calculate_accuracy(
-                predictions,
-                labels,
-                task="binary",
-                num_classes=2,
-                threshold=0.5,
-            )
+    def test_binary_classification_varying_threshold(self):
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 0, 1, 0])
+        result = calculate_accuracy(
+            predictions,
+            labels,
+            task="binary",
+            num_classes=1,
+            threshold=0.75,
+        )
+        y_pred = (predictions >= 0.75).astype(int)
+        acc = accuracy_score(labels, y_pred)
+        assert np.isclose(result, acc)
+
+    def test_multilabel_classification_macro_average(self):
+        predictions = np.array([[0.9, 0.1], [0.8, 0.2], [0.3, 0.7]])
+        labels = np.array([[1, 0], [1, 0], [0, 1]])
+        num_classes = labels.shape[1]
+        result = calculate_accuracy(
+            predictions,
+            labels,
+            task="multilabel",
+            num_classes=num_classes,
+            threshold=0.5,
+            averaging_method="macro",
+        )
+        y_pred = (predictions >= 0.5).astype(int)
+        acc_class0 = accuracy_score(labels[:, 0], y_pred[:, 0])
+        acc_class1 = accuracy_score(labels[:, 1], y_pred[:, 1])
+        expected_result = (acc_class0 + acc_class1) / 2
+        assert np.isclose(result, expected_result)
 
 
 class TestCalculateRecall:
     def test_binary_classification_perfect(self):
-        predictions = torch.tensor([0.9, 0.1, 0.8, 0.2])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.9, 0.1, 0.8, 0.2])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_recall(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_imperfect(self):
-        predictions = torch.tensor([0.6, 0.4, 0.3, 0.7])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.6, 0.4, 0.3, 0.7])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_recall(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
-        # True Positives: 1, False Negatives: 1, Recall = 1 / (1 + 1) = 0.5
         assert np.isclose(result, 0.5)
 
     def test_binary_classification_all_zeros(self):
-        predictions = torch.tensor([0.1, 0.2, 0.3, 0.4])
-        labels = torch.tensor([0, 0, 0, 0])
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
         result = calculate_recall(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
-        # No true positives, recall is undefined but torchmetrics returns 0
+        # Recall is ill-defined and set to 0.0 due to no true positives
         assert np.isclose(result, 0.0)
 
     def test_binary_classification_all_ones(self):
-        predictions = torch.tensor([0.6, 0.7, 0.8, 0.9])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_recall(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
         assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_perfect(self):
-        predictions = torch.tensor([[0.1, 0.8, 0.1], [0.7, 0.2, 0.1], [0.1, 0.1, 0.8]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_recall(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-        )
-        assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_imperfect(self):
-        predictions = torch.tensor([[0.3, 0.5, 0.2], [0.2, 0.3, 0.5], [0.4, 0.4, 0.2]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_recall(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-        )
-        # Recall depends on per-class performance; compute manually if needed
-        assert np.isclose(result, 0.3333333333)
 
     def test_multilabel_classification_perfect(self):
-        predictions = torch.tensor([[0.9, 0.8], [0.8, 0.9], [0.7, 0.6]])
-        labels = torch.tensor([[1, 1], [1, 1], [1, 1]])
+        predictions = np.array([[0.9, 0.8], [0.8, 0.9], [0.7, 0.6]])
+        labels = np.array([[1, 1], [1, 1], [1, 1]])
         result = calculate_recall(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
             threshold=0.5,
         )
-        assert np.isclose(result, 1.0)
+        assert np.allclose(result, 1.0)
 
     def test_multilabel_classification_imperfect(self):
-        predictions = torch.tensor([[0.6, 0.4], [0.4, 0.6], [0.5, 0.5]])
-        labels = torch.tensor([[1, 0], [0, 1], [1, 0]])
+        predictions = np.array([[0.6, 0.4], [0.4, 0.6], [0.5, 0.5]])
+        labels = np.array([[1, 0], [0, 1], [1, 0]])
         result = calculate_recall(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
             threshold=0.5,
+            averaging_method="macro",
         )
-        # Expected recall: (1.0 + 0.5) / 2 = 0.75
-        assert np.isclose(result, 0.75)
+        expected_recall = recall_score(
+            labels, (predictions >= 0.5).astype(int), average="macro", zero_division=0
+        )
+        assert np.isclose(result, expected_recall)
 
     def test_incorrect_shapes(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8])
-        labels = torch.tensor([1, 0])
-        with pytest.raises(RuntimeError, match="same shape"):
+        predictions = np.array([0.9, 0.2, 0.8])
+        labels = np.array([1, 0])
+        with pytest.raises(ValueError):
             calculate_recall(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=0.5,
             )
 
     def test_invalid_threshold(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8, 0.1])
-        labels = torch.tensor([1, 0, 1, 0])
-        with pytest.raises(
-            ValueError,
-            match="Expected argument `threshold` to be a float in the \\[0,1\\] range",
-        ):
+        predictions = np.array([0.9, 0.2, 0.8, 0.1])
+        labels = np.array([1, 0, 1, 0])
+        with pytest.raises(ValueError):
             calculate_recall(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=-0.1,
             )
 
-    def test_non_tensor_inputs(self):
+    def test_non_array_inputs(self):
         predictions = [0.9, 0.2, 0.8, 0.1]
         labels = [1, 0, 1, 0]
-        with pytest.raises(AttributeError):
+        result = calculate_recall(
+            np.array(predictions),
+            np.array(labels),
+            task="binary",
+            threshold=0.5,
+        )
+        assert np.isclose(result, 1.0)
+
+    def test_empty_arrays(self):
+        predictions = np.array([])
+        labels = np.array([])
+        with pytest.raises(ValueError):
             calculate_recall(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=0.5,
             )
 
-    def test_empty_tensors(self):
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        with pytest.raises(RuntimeError):
-            calculate_recall(
-                predictions,
-                labels,
-                task="binary",
-                num_classes=2,
-                threshold=0.5,
-            )
+    def test_multilabel_classification_macro_average(self):
+        predictions = np.array([[0.9, 0.1], [0.1, 0.9], [0.8, 0.2]])
+        labels = np.array([[1, 0], [0, 1], [1, 0]])
+        result = calculate_recall(
+            predictions,
+            labels,
+            task="multilabel",
+            threshold=0.5,
+            averaging_method="macro",
+        )
+        expected_recall = recall_score(
+            labels, (predictions >= 0.5).astype(int), average="macro", zero_division=0
+        )
+        assert np.isclose(result, expected_recall)
+
+    def test_binary_classification_no_positive_predictions(self):
+        predictions = np.array([0.0, 0.0, 0.0, 0.0])
+        labels = np.array([1, 0, 1, 0])
+        result = calculate_recall(
+            predictions,
+            labels,
+            task="binary",
+            threshold=0.5,
+        )
+        expected_recall = recall_score(
+            labels, (predictions >= 0.5).astype(int), zero_division=0
+        )
+        assert np.isclose(result, expected_recall)
+
+    def test_binary_classification_no_positive_labels(self):
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([0, 0, 0, 0])
+        result = calculate_recall(
+            predictions,
+            labels,
+            task="binary",
+            threshold=0.5,
+        )
+        # Recall is ill-defined and set to 0.0 due to no true positives
+        assert np.isclose(result, 0.0)
 
 
 class TestCalculatePrecision:
     def test_binary_classification_perfect(self):
-        predictions = torch.tensor([0.9, 0.1, 0.8, 0.2])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.9, 0.1, 0.8, 0.2])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_imperfect(self):
-        predictions = torch.tensor([0.6, 0.4, 0.3, 0.7])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.6, 0.4, 0.3, 0.7])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
-        # True Positives: 1, False Positives: 1, Precision = 1 / (1 + 1) = 0.5
         assert np.isclose(result, 0.5)
 
     def test_binary_classification_all_zeros(self):
-        predictions = torch.tensor([0.1, 0.2, 0.3, 0.4])
-        labels = torch.tensor([0, 0, 0, 0])
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
         result = calculate_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
-        # No predicted positives, precision is undefined but torchmetrics returns 0
+        # Precision is ill-defined and set to 0.0 due to no predicted positives
         assert np.isclose(result, 0.0)
 
     def test_binary_classification_all_ones(self):
-        predictions = torch.tensor([0.6, 0.7, 0.8, 0.9])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
         assert np.isclose(result, 1.0)
 
-    def test_multiclass_classification_perfect(self):
-        predictions = torch.tensor([[0.1, 0.8, 0.1], [0.7, 0.2, 0.1], [0.1, 0.1, 0.8]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_precision(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-        )
-        assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_imperfect(self):
-        predictions = torch.tensor([[0.3, 0.5, 0.2], [0.2, 0.3, 0.5], [0.4, 0.4, 0.2]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_precision(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-        )
-        # Precision depends on per-class performance; compute manually if needed
-        assert np.isclose(result, 0.3333333333)
-
     def test_multilabel_classification_perfect(self):
-        predictions = torch.tensor([[0.9, 0.8], [0.8, 0.9], [0.7, 0.6]])
-        labels = torch.tensor([[1, 1], [1, 1], [1, 1]])
+        predictions = np.array([[0.9, 0.8], [0.8, 0.9], [0.7, 0.6]])
+        labels = np.array([[1, 1], [1, 1], [1, 1]])
         result = calculate_precision(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
             threshold=0.5,
         )
-        assert np.isclose(result, 1.0)
+        assert np.allclose(result, 1.0)
 
     def test_multilabel_classification_imperfect(self):
-        # Imperfect predictions for multilabel classification
-        predictions = torch.tensor(
+        predictions = np.array(
             [
                 [0.9, 0.2],
                 [0.2, 0.8],
                 [0.6, 0.4],
                 [0.4, 0.6],
-                [0.5, 0.5],  # This will be thresholded to [0, 0]
+                [0.5, 0.5],
             ]
         )
-        labels = torch.tensor(
+        labels = np.array(
             [
                 [1, 0],
                 [0, 1],
@@ -436,317 +425,314 @@ class TestCalculatePrecision:
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
             threshold=0.5,
+            averaging_method="macro",
         )
-        # Adjusted calculation considering torchmetrics thresholding
-        # Class 0: TP=2, FP=0 => Precision=2/2=1.0
-        # Class 1: TP=1, FP=1 => Precision=1/2=0.5
-        # Macro average precision: (1.0 + 0.5)/2 = 0.75
-        expected_precision = (1.0 + 0.5) / 2
+        expected_precision = precision_score(
+            labels, (predictions >= 0.5).astype(int), average="macro", zero_division=0
+        )
         assert np.isclose(result, expected_precision, atol=1e-4)
 
     def test_incorrect_shapes(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8])
-        labels = torch.tensor([1, 0])
-        with pytest.raises(RuntimeError, match="same shape"):
+        predictions = np.array([0.9, 0.2, 0.8])
+        labels = np.array([1, 0])
+        with pytest.raises(ValueError):
             calculate_precision(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=0.5,
             )
 
     def test_invalid_threshold(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8, 0.1])
-        labels = torch.tensor([1, 0, 1, 0])
-        with pytest.raises(
-            ValueError,
-            match="Expected argument `threshold` to be a float in the \\[0,1\\] range",
-        ):
+        predictions = np.array([0.9, 0.2, 0.8, 0.1])
+        labels = np.array([1, 0, 1, 0])
+        with pytest.raises(ValueError):
             calculate_precision(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=-0.1,
             )
 
-    def test_non_tensor_inputs(self):
+    def test_non_array_inputs(self):
         predictions = [0.9, 0.2, 0.8, 0.1]
         labels = [1, 0, 1, 0]
-        with pytest.raises(AttributeError):
+        result = calculate_precision(
+            np.array(predictions),
+            np.array(labels),
+            task="binary",
+            threshold=0.5,
+        )
+        assert np.isclose(result, 1.0)
+
+    def test_empty_arrays(self):
+        predictions = np.array([])
+        labels = np.array([])
+        with pytest.raises(ValueError):
             calculate_precision(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=0.5,
             )
 
-    def test_empty_tensors(self):
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        with pytest.raises(RuntimeError):
-            calculate_precision(
-                predictions,
-                labels,
-                task="binary",
-                num_classes=2,
-                threshold=0.5,
-            )
+    def test_multilabel_classification_weighted_average(self):
+        predictions = np.array([[0.9, 0.1], [0.2, 0.8], [0.8, 0.2]])
+        labels = np.array([[1, 0], [0, 1], [1, 0]])
+        result = calculate_precision(
+            predictions,
+            labels,
+            task="multilabel",
+            threshold=0.5,
+            averaging_method="weighted",
+        )
+        expected_precision = precision_score(
+            labels, (predictions >= 0.5).astype(int), average="weighted", zero_division=0
+        )
+        assert np.isclose(result, expected_precision)
+
+    def test_binary_classification_no_positive_predictions(self):
+        predictions = np.array([0.0, 0.0, 0.0, 0.0])
+        labels = np.array([1, 0, 1, 0])
+        result = calculate_precision(
+            predictions,
+            labels,
+            task="binary",
+            threshold=0.5,
+        )
+        expected_precision = precision_score(
+            labels, (predictions >= 0.5).astype(int), zero_division=0
+        )
+        assert np.isclose(result, expected_precision)
+
+    def test_binary_classification_no_positive_labels(self):
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([0, 0, 0, 0])
+        result = calculate_precision(
+            predictions,
+            labels,
+            task="binary",
+            threshold=0.5,
+        )
+        # Precision is ill-defined and set to 0.0 due to no positive labels
+        assert np.isclose(result, 0.0)
 
 
 class TestCalculateF1Score:
     def test_binary_classification_perfect(self):
-        predictions = torch.tensor([0.9, 0.1, 0.8, 0.2])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.9, 0.1, 0.8, 0.2])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_f1_score(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_imperfect(self):
-        predictions = torch.tensor([0.6, 0.4, 0.3, 0.7])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.6, 0.4, 0.3, 0.7])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_f1_score(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
-        # Precision and Recall are both 0.5, so F1 = 0.5
         assert np.isclose(result, 0.5)
 
     def test_binary_classification_all_zeros(self):
-        predictions = torch.tensor([0.1, 0.2, 0.3, 0.4])
-        labels = torch.tensor([0, 0, 0, 0])
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
         result = calculate_f1_score(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
-        # No predicted positives and no actual positives, F1 is undefined, torchmetrics returns 0
+        # F1 score is ill-defined and set to 0.0 due to no positive labels
         assert np.isclose(result, 0.0)
 
     def test_binary_classification_all_ones(self):
-        predictions = torch.tensor([0.6, 0.7, 0.8, 0.9])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_f1_score(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
             threshold=0.5,
         )
         assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_perfect(self):
-        predictions = torch.tensor([[0.1, 0.8, 0.1], [0.7, 0.2, 0.1], [0.1, 0.1, 0.8]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_f1_score(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-        )
-        assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_imperfect(self):
-        predictions = torch.tensor([[0.3, 0.5, 0.2], [0.2, 0.3, 0.5], [0.4, 0.4, 0.2]])
-        labels = torch.tensor([1, 0, 2])
-        result = calculate_f1_score(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-            threshold=None,
-        )
-        # F1 depends on per-class performance; compute manually if needed
-        assert np.isclose(result, 0.3333333333)
 
     def test_multilabel_classification_perfect(self):
-        predictions = torch.tensor([[0.9, 0.8], [0.8, 0.9], [0.7, 0.6]])
-        labels = torch.tensor([[1, 1], [1, 1], [1, 1]])
+        predictions = np.array([[0.9, 0.8], [0.8, 0.9], [0.7, 0.6]])
+        labels = np.array([[1, 1], [1, 1], [1, 1]])
         result = calculate_f1_score(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
             threshold=0.5,
         )
-        assert np.isclose(result, 1.0)
+        assert np.allclose(result, 1.0)
 
     def test_multilabel_classification_imperfect(self):
-        predictions = torch.tensor([[0.6, 0.4], [0.4, 0.6], [0.5, 0.5]])
-        labels = torch.tensor([[1, 0], [0, 1], [1, 0]])
+        predictions = np.array([[0.6, 0.4], [0.4, 0.6], [0.5, 0.5]])
+        labels = np.array([[1, 0], [0, 1], [1, 0]])
         result = calculate_f1_score(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
             threshold=0.5,
+            averaging_method="macro",
         )
-        # Expected F1 score: (0.8 + 0.8) / 2 = 0.8333333
-        assert np.isclose(result, 0.8333333)
+        expected_f1 = f1_score(
+            labels, (predictions >= 0.5).astype(int), average="macro", zero_division=0
+        )
+        assert np.isclose(result, expected_f1, atol=1e-4)
 
     def test_incorrect_shapes(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8])
-        labels = torch.tensor([1, 0])
-        with pytest.raises(RuntimeError, match="same shape"):
+        predictions = np.array([0.9, 0.2, 0.8])
+        labels = np.array([1, 0])
+        with pytest.raises(ValueError):
             calculate_f1_score(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=0.5,
             )
 
     def test_invalid_threshold(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8, 0.1])
-        labels = torch.tensor([1, 0, 1, 0])
-        with pytest.raises(
-            ValueError,
-            match="Expected argument `threshold` to be a float in the \\[0,1\\] range",
-        ):
+        predictions = np.array([0.9, 0.2, 0.8, 0.1])
+        labels = np.array([1, 0, 1, 0])
+        with pytest.raises(ValueError):
             calculate_f1_score(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=1.5,
             )
 
-    def test_non_tensor_inputs(self):
+    def test_non_array_inputs(self):
         predictions = [0.9, 0.2, 0.8, 0.1]
         labels = [1, 0, 1, 0]
-        with pytest.raises(AttributeError):
+        result = calculate_f1_score(
+            np.array(predictions),
+            np.array(labels),
+            task="binary",
+            threshold=0.5,
+        )
+        assert np.isclose(result, 1.0)
+
+    def test_empty_arrays(self):
+        predictions = np.array([])
+        labels = np.array([])
+        with pytest.raises(ValueError):
             calculate_f1_score(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
                 threshold=0.5,
             )
 
-    def test_empty_tensors(self):
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        with pytest.raises(RuntimeError):
-            calculate_f1_score(
-                predictions,
-                labels,
-                task="binary",
-                num_classes=2,
-                threshold=0.5,
-            )
+    def test_multilabel_classification_weighted_average(self):
+        predictions = np.array([[0.9, 0.1], [0.8, 0.2], [0.5, 0.5]])
+        labels = np.array([[1, 0], [1, 0], [1, 1]])
+        result = calculate_f1_score(
+            predictions,
+            labels,
+            task="multilabel",
+            threshold=0.5,
+            averaging_method="weighted",
+        )
+        expected_f1 = f1_score(
+            labels, (predictions >= 0.5).astype(int), average="weighted", zero_division=0
+        )
+        assert np.isclose(result, expected_f1)
+
+    def test_binary_classification_no_positive_labels(self):
+        predictions = np.array([0.0, 0.0, 0.0, 0.0])
+        labels = np.array([0, 0, 0, 0])
+        result = calculate_f1_score(
+            predictions,
+            labels,
+            task="binary",
+            threshold=0.5,
+        )
+        # F1 score is ill-defined and set to 0.0 due to no positive labels
+        assert np.isclose(result, 0.0)
+
+    def test_binary_classification_no_positive_predictions(self):
+        predictions = np.array([0.0, 0.0, 0.0, 0.0])
+        labels = np.array([1, 0, 1, 0])
+        result = calculate_f1_score(
+            predictions,
+            labels,
+            task="binary",
+            threshold=0.5,
+        )
+        expected_f1 = f1_score(
+            labels, (predictions >= 0.5).astype(int), zero_division=0
+        )
+        assert np.isclose(result, expected_f1)
 
 
 class TestCalculateAveragePrecision:
     def test_binary_classification_perfect(self):
-        predictions = torch.tensor([0.9, 0.8, 0.7, 0.6])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.9, 0.8, 0.7, 0.6])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_average_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_imperfect(self):
-        predictions = torch.tensor([0.9, 0.6, 0.3, 0.1])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.9, 0.6, 0.3, 0.1])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_average_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
-        # Average precision is between 0 and 1, less than perfect
-        assert np.isclose(result, 0.8333333333)
+        expected_ap = average_precision_score(labels, predictions)
+        assert np.isclose(result, expected_ap)
 
     def test_binary_classification_all_zeros(self):
-        predictions = torch.tensor([0.1, 0.2, 0.3, 0.4])
-        labels = torch.tensor([0, 0, 0, 0])
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
         result = calculate_average_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
-        # Should return 0.0 when there are no positive labels
+        # AP is undefined when there are no positive labels; scikit-learn returns 0.0
         assert np.isclose(result, 0.0)
 
     def test_binary_classification_all_ones(self):
-        predictions = torch.tensor([0.6, 0.7, 0.8, 0.9])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_average_precision(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
         assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_perfect(self):
-        predictions = torch.tensor(
-            [[0.9, 0.05, 0.05], [0.05, 0.9, 0.05], [0.05, 0.05, 0.9]]
-        )
-        labels = torch.tensor([0, 1, 2])
-        result = calculate_average_precision(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-        )
-        assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_imperfect(self):
-        # Adjusted predictions for an imperfect scenario
-        predictions = torch.tensor(
-            [
-                [0.33, 0.33, 0.34],
-                [0.34, 0.33, 0.33],
-                [0.33, 0.34, 0.33],
-                [0.33, 0.33, 0.34],
-                [0.34, 0.33, 0.33],
-                [0.33, 0.34, 0.33],
-            ]
-        )
-        labels = torch.tensor([0, 1, 2, 0, 1, 2])
-        result = calculate_average_precision(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-        )
-        # Now the average precision should be less than 1.0
-        assert np.isclose(result, 0.3333333)
 
     def test_multilabel_classification_perfect(self):
-        predictions = torch.tensor([[0.9, 0.9], [0.8, 0.8], [0.7, 0.7]])
-        labels = torch.tensor([[1, 1], [1, 1], [1, 1]])
+        predictions = np.array([[0.9, 0.9], [0.8, 0.8], [0.7, 0.7]])
+        labels = np.array([[1, 1], [1, 1], [1, 1]])
         result = calculate_average_precision(
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
+            averaging_method="macro",
         )
         assert np.isclose(result, 1.0)
 
     def test_multilabel_classification_imperfect(self):
-        # Imperfect predictions for multilabel classification
-        predictions = torch.tensor(
+        predictions = np.array(
             [
                 [0.8, 0.2],
                 [0.2, 0.8],
@@ -755,7 +741,7 @@ class TestCalculateAveragePrecision:
                 [0.4, 0.6],
             ]
         )
-        labels = torch.tensor(
+        labels = np.array(
             [
                 [1, 0],
                 [0, 1],
@@ -768,139 +754,132 @@ class TestCalculateAveragePrecision:
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
+            averaging_method="macro",
         )
-
-        assert np.isclose(result, 0.8055556)
+        expected_ap = average_precision_score(
+            labels, predictions, average="macro"
+        )
+        assert np.isclose(result, expected_ap)
 
     def test_incorrect_shapes(self):
-        predictions = torch.tensor([0.9, 0.2, 0.8])
-        labels = torch.tensor([1, 0])
-        with pytest.raises(RuntimeError, match="same shape"):
+        predictions = np.array([0.9, 0.2, 0.8])
+        labels = np.array([1, 0])
+        with pytest.raises(ValueError):
             calculate_average_precision(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
             )
 
-    def test_non_tensor_inputs(self):
+    def test_non_array_inputs(self):
         predictions = [0.9, 0.2, 0.8, 0.1]
         labels = [1, 0, 1, 0]
-        with pytest.raises(AttributeError):
+        result = calculate_average_precision(
+            np.array(predictions),
+            np.array(labels),
+            task="binary",
+        )
+        expected_ap = average_precision_score(labels, predictions)
+        assert np.isclose(result, expected_ap)
+
+    def test_empty_arrays(self):
+        predictions = np.array([])
+        labels = np.array([])
+        with pytest.raises(ValueError):
             calculate_average_precision(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
             )
 
-    def test_empty_tensors(self):
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        with pytest.raises(ValueError, match="Expected argument `target` to be an int"):
-            calculate_average_precision(
-                predictions,
-                labels,
-                task="binary",
-                num_classes=2,
-            )
+    def test_binary_classification_no_positive_labels(self):
+        predictions = np.array([0.2, 0.3, 0.4, 0.1])
+        labels = np.array([0, 0, 0, 0])
+        result = calculate_average_precision(
+            predictions,
+            labels,
+            task="binary",
+        )
+        # AP is undefined when there are no positive labels; scikit-learn returns 0.0
+        assert np.isclose(result, 0.0)
+
+    def test_multilabel_classification_no_positive_labels(self):
+        predictions = np.array([[0.1, 0.2], [0.3, 0.4]])
+        labels = np.array([[0, 0], [0, 0]])
+        result = calculate_average_precision(
+            predictions,
+            labels,
+            task="multilabel",
+            averaging_method="macro",
+        )
+        # AP is undefined when there are no positive labels; scikit-learn returns 0.0 for each class
+        expected_result = np.array([0.0, 0.0])
+        assert np.allclose(result, expected_result)
+
+    def test_binary_classification_perfect_inverse(self):
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
+        result = calculate_average_precision(
+            1 - predictions,
+            1 - labels,
+            task="binary",
+        )
+        assert np.isclose(result, 1.0)
 
 
 class TestCalculateAUROC:
     def test_binary_classification_perfect(self):
-        predictions = torch.tensor([0.9, 0.8, 0.7, 0.6])
-        labels = torch.tensor([1, 1, 0, 0])
+        predictions = np.array([0.9, 0.8, 0.7, 0.6])
+        labels = np.array([1, 1, 0, 0])
         result = calculate_auroc(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
         assert np.isclose(result, 1.0)
 
     def test_binary_classification_imperfect(self):
-        predictions = torch.tensor([0.9, 0.6, 0.3, 0.1])
-        labels = torch.tensor([1, 0, 1, 0])
+        predictions = np.array([0.9, 0.6, 0.3, 0.1])
+        labels = np.array([1, 0, 1, 0])
         result = calculate_auroc(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
-        assert np.isclose(result, 0.75)
+        expected_auc = roc_auc_score(labels, predictions)
+        assert np.isclose(result, expected_auc)
 
     def test_binary_classification_all_zeros(self):
-        predictions = torch.tensor([0.1, 0.2, 0.3, 0.4])
-        labels = torch.tensor([0, 0, 0, 0])
+        predictions = np.array([0.1, 0.2, 0.3, 0.4])
+        labels = np.array([0, 0, 0, 0])
         result = calculate_auroc(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
-        # torchmetrics returns 0.0 when there are no positive cases
-        assert np.isclose(result, 0.0)
+        assert np.isnan(result)
 
     def test_binary_classification_all_ones(self):
-        predictions = torch.tensor([0.6, 0.7, 0.8, 0.9])
-        labels = torch.tensor([1, 1, 1, 1])
+        predictions = np.array([0.6, 0.7, 0.8, 0.9])
+        labels = np.array([1, 1, 1, 1])
         result = calculate_auroc(
             predictions,
             labels,
             task="binary",
-            num_classes=2,
         )
-        # torchmetrics returns 0.0 when there are no negative cases
-        assert np.isclose(result, 0.0)
-
-    def test_multiclass_classification_perfect(self):
-        predictions = torch.tensor(
-            [[0.9, 0.05, 0.05], [0.05, 0.9, 0.05], [0.05, 0.05, 0.9]]
-        )
-        labels = torch.tensor([0, 1, 2])
-        result = calculate_auroc(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-        )
-        assert np.isclose(result, 1.0)
-
-    def test_multiclass_classification_imperfect(self):
-        # Imperfect predictions for multiclass classification
-        predictions = torch.tensor(
-            [
-                [0.7, 0.2, 0.1],
-                [0.2, 0.7, 0.1],
-                [0.1, 0.2, 0.7],
-                [0.4, 0.4, 0.2],
-                [0.3, 0.4, 0.3],
-                [0.2, 0.3, 0.5],
-            ]
-        )
-        labels = torch.tensor([0, 0, 2, 0, 1, 2])
-        result = calculate_auroc(
-            predictions,
-            labels,
-            task="multiclass",
-            num_classes=3,
-        )
-
-        assert np.isclose(result, 0.8444444)
+        assert np.isnan(result)
 
     def test_multilabel_classification_perfect(self):
-        # Perfect predictions for multilabel classification with both positive and negative labels
-        predictions = torch.tensor(
+        predictions = np.array(
             [
-                [0.99, 0.99],  # labels [1,1]
-                [0.99, 0.01],  # labels [1,0]
-                [0.01, 0.99],  # labels [0,1]
-                [0.99, 0.99],  # labels [1,1]
-                [0.01, 0.01],  # labels [0,0]
+                [0.99, 0.99],
+                [0.99, 0.01],
+                [0.01, 0.99],
+                [0.99, 0.99],
+                [0.01, 0.01],
             ]
         )
-        labels = torch.tensor(
+        labels = np.array(
             [
                 [1, 1],
                 [1, 0],
@@ -913,14 +892,12 @@ class TestCalculateAUROC:
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
         )
-
-        assert np.isclose(result, 1.0)
+        expected_auc = roc_auc_score(labels, predictions, average="macro")
+        assert np.isclose(result, expected_auc)
 
     def test_multilabel_classification_imperfect(self):
-        # Imperfect predictions for multilabel classification
-        predictions = torch.tensor(
+        predictions = np.array(
             [
                 [0.8, 0.2],
                 [0.2, 0.8],
@@ -929,7 +906,7 @@ class TestCalculateAUROC:
                 [0.4, 0.6],
             ]
         )
-        labels = torch.tensor(
+        labels = np.array(
             [
                 [1, 0],
                 [0, 1],
@@ -942,43 +919,79 @@ class TestCalculateAUROC:
             predictions,
             labels,
             task="multilabel",
-            num_classes=2,
         )
-
-        assert np.isclose(result, 0.666666)
+        expected_auc = roc_auc_score(labels, predictions, average="macro")
+        assert np.isclose(result, expected_auc, atol=1e-4)
 
     def test_incorrect_shapes(self):
-        predictions = torch.tensor([0.9, 0.2])
-        labels = torch.tensor([1])
-        with pytest.raises(
-            IndexError,
-            match="index \d+ is out of bounds for dimension \d+ with size \d+",
-        ):
+        predictions = np.array([0.9, 0.2])
+        labels = np.array([1])
+        with pytest.raises(ValueError):
             calculate_auroc(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
             )
 
-    def test_non_tensor_inputs(self):
+    def test_non_array_inputs(self):
         predictions = [0.9, 0.2, 0.8, 0.1]
         labels = [1, 0, 1, 0]
-        with pytest.raises(AttributeError):
+        result = calculate_auroc(
+            np.array(predictions),
+            np.array(labels),
+            task="binary",
+        )
+        expected_auc = roc_auc_score(labels, predictions)
+        assert np.isclose(result, expected_auc)
+
+    def test_empty_arrays(self):
+        predictions = np.array([])
+        labels = np.array([])
+        with pytest.raises(ValueError):
             calculate_auroc(
                 predictions,
                 labels,
                 task="binary",
-                num_classes=2,
             )
 
-    def test_empty_tensors(self):
-        predictions = torch.tensor([])
-        labels = torch.tensor([])
-        with pytest.raises(IndexError, match="index is out of bounds"):
-            calculate_auroc(
-                predictions,
-                labels,
-                task="binary",
-                num_classes=2,
-            )
+    def test_multilabel_classification_no_positive_labels(self):
+        predictions = np.array([[0.1, 0.2], [0.2, 0.1]])
+        labels = np.array([[0, 0], [0, 0]])
+        result = calculate_auroc(
+            predictions,
+            labels,
+            task="multilabel",
+        )
+        assert np.all(np.isnan(result))
+
+    def test_binary_classification_no_positive_labels(self):
+        predictions = np.array([0.2, 0.3, 0.4, 0.1])
+        labels = np.array([0, 0, 0, 0])
+        result = calculate_auroc(
+            predictions,
+            labels,
+            task="binary",
+        )
+        assert np.isnan(result)
+
+    def test_binary_classification_no_negative_labels(self):
+        predictions = np.array([0.2, 0.3, 0.4, 0.1])
+        labels = np.array([1, 1, 1, 1])
+        result = calculate_auroc(
+            predictions,
+            labels,
+            task="binary",
+        )
+        assert np.isnan(result)
+
+    def test_multilabel_classification_mixed_classes(self):
+        predictions = np.array([[0.6, 0.4], [0.7, 0.3], [0.2, 0.8]])
+        labels = np.array([[1, 0], [1, 0], [0, 1]])
+        result = calculate_auroc(
+            predictions,
+            labels,
+            task="multilabel",
+            averaging_method="macro",
+        )
+        expected_result = roc_auc_score(labels, predictions, average="macro")
+        assert np.isclose(result, expected_result)

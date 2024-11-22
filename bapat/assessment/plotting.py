@@ -1,10 +1,10 @@
-"""
-plotting.py
+# plotting.py
 
+"""
 Module containing functions to plot performance metrics.
 """
 
-from typing import List, Literal
+from typing import List, Dict, Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -18,13 +18,25 @@ def plot_overall_metrics(
     """
     Plots a bar chart for overall performance metrics.
     """
+    # Input validation
+    if not isinstance(metrics_df, pd.DataFrame):
+        raise TypeError("metrics_df must be a pandas DataFrame.")
+    if 'Overall' not in metrics_df.columns:
+        raise KeyError("metrics_df must contain an 'Overall' column.")
+    if metrics_df.empty:
+        raise ValueError("metrics_df is empty.")
+    if not isinstance(colors, list):
+        raise TypeError("colors must be a list.")
+    if len(colors) == 0:
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
     # Extract the metric names and their values
     metrics = metrics_df.index  # Metric names
     values = metrics_df["Overall"].values  # Metric values
 
     # Plot the bar chart with specified colors
     plt.figure(figsize=(10, 6))
-    plt.bar(metrics, values, color=colors)
+    plt.bar(metrics, values, color=colors[:len(metrics)])
 
     # Add titles and labels
     plt.title("Overall Metric Scores", fontsize=16)
@@ -48,6 +60,16 @@ def plot_metrics_per_class(
     """
     Plots metric values per class, with each metric represented by a distinct color and line.
     """
+    # Input validation
+    if not isinstance(metrics_df, pd.DataFrame):
+        raise TypeError("metrics_df must be a pandas DataFrame.")
+    if metrics_df.empty:
+        raise ValueError("metrics_df is empty.")
+    if not isinstance(colors, list):
+        raise TypeError("colors must be a list.")
+    if len(colors) == 0:
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
     # Define a list of line styles
     line_styles = ["-", "--", "-.", ":", (0, (5, 10)), (0, (5, 5)), (0, (3, 5, 1, 5))]
 
@@ -87,13 +109,27 @@ def plot_metrics_per_class(
 
 def plot_metrics_across_thresholds(
     thresholds: np.ndarray,
-    metric_values_dict: dict,
+    metric_values_dict: Dict[str, np.ndarray],
     metrics_to_plot: List[str],
     colors: List[str],
 ) -> None:
     """
     Plots metrics across different thresholds.
     """
+    # Input validation
+    if not isinstance(thresholds, np.ndarray):
+        raise TypeError("thresholds must be a numpy ndarray.")
+    if thresholds.size == 0:
+        raise ValueError("thresholds array is empty.")
+    if not isinstance(metric_values_dict, dict):
+        raise TypeError("metric_values_dict must be a dictionary.")
+    if not isinstance(metrics_to_plot, list):
+        raise TypeError("metrics_to_plot must be a list.")
+    if not isinstance(colors, list):
+        raise TypeError("colors must be a list.")
+    if len(colors) == 0:
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
     # Define a list of line styles
     line_styles = ["-", "--", "-.", ":", (0, (5, 10)), (0, (5, 5)), (0, (3, 5, 1, 5))]
 
@@ -101,7 +137,11 @@ def plot_metrics_across_thresholds(
 
     # Plot each metric across thresholds
     for i, metric_name in enumerate(metrics_to_plot):
+        if metric_name not in metric_values_dict:
+            raise KeyError(f"Metric '{metric_name}' not found in metric_values_dict.")
         metric_values = metric_values_dict[metric_name]
+        if len(metric_values) != len(thresholds):
+            raise ValueError(f"Length of metric '{metric_name}' values does not match length of thresholds.")
         line_style = line_styles[i % len(line_styles)]
         plt.plot(
             thresholds,
@@ -123,7 +163,7 @@ def plot_metrics_across_thresholds(
 
 def plot_metrics_across_thresholds_per_class(
     thresholds: np.ndarray,
-    metric_values_dict_per_class: dict,
+    metric_values_dict_per_class: Dict[str, Dict[str, np.ndarray]],
     metrics_to_plot: List[str],
     class_names: List[str],
     colors: List[str],
@@ -131,7 +171,25 @@ def plot_metrics_across_thresholds_per_class(
     """
     Plots metrics across different thresholds per class.
     """
+    # Input validation
+    if not isinstance(thresholds, np.ndarray):
+        raise TypeError("thresholds must be a numpy ndarray.")
+    if thresholds.size == 0:
+        raise ValueError("thresholds array is empty.")
+    if not isinstance(metric_values_dict_per_class, dict):
+        raise TypeError("metric_values_dict_per_class must be a dictionary.")
+    if not isinstance(metrics_to_plot, list):
+        raise TypeError("metrics_to_plot must be a list.")
+    if not isinstance(class_names, list):
+        raise TypeError("class_names must be a list.")
+    if not isinstance(colors, list):
+        raise TypeError("colors must be a list.")
+    if len(colors) == 0:
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
     num_classes = len(class_names)
+    if num_classes == 0:
+        raise ValueError("class_names list is empty.")
 
     # Determine grid size based on the number of classes
     n_cols = int(np.ceil(np.sqrt(num_classes)))
@@ -150,12 +208,18 @@ def plot_metrics_across_thresholds_per_class(
     line_styles = ["-", "--", "-.", ":", (0, (5, 10)), (0, (5, 5)), (0, (3, 5, 1, 5))]
 
     for class_idx, class_name in enumerate(class_names):
+        if class_name not in metric_values_dict_per_class:
+            raise KeyError(f"Class '{class_name}' not found in metric_values_dict_per_class.")
         ax = axes[class_idx]
         metric_values_dict = metric_values_dict_per_class[class_name]
 
         # Plot each metric for the current class
         for i, metric_name in enumerate(metrics_to_plot):
+            if metric_name not in metric_values_dict:
+                raise KeyError(f"Metric '{metric_name}' not found for class '{class_name}'.")
             metric_values = metric_values_dict[metric_name]
+            if len(metric_values) != len(thresholds):
+                raise ValueError(f"Length of metric '{metric_name}' values for class '{class_name}' does not match length of thresholds.")
             line_style = line_styles[i % len(line_styles)]
             ax.plot(
                 thresholds,
@@ -188,25 +252,50 @@ def plot_confusion_matrices(
     """
     Plot confusion matrices for each class in a single figure with multiple subplots.
     """
+    # Input validation
+    if not isinstance(conf_mat, np.ndarray):
+        raise TypeError("conf_mat must be a numpy ndarray.")
+    if conf_mat.size == 0:
+        raise ValueError("conf_mat is empty.")
+    if not isinstance(task, str) or task not in ["binary", "multiclass", "multilabel"]:
+        raise ValueError("Invalid task. Expected 'binary', 'multiclass', or 'multilabel'.")
+    if not isinstance(class_names, list):
+        raise TypeError("class_names must be a list.")
+    if len(class_names) == 0:
+        raise ValueError("class_names list is empty.")
+
     if task == "binary":
+        if conf_mat.shape != (2, 2):
+            raise ValueError("For binary task, conf_mat must be of shape (2, 2).")
+        if len(class_names) != 2:
+            raise ValueError("For binary task, class_names must have exactly two elements.")
         # For binary classification, conf_mat is a 2x2 matrix
         plt.figure(figsize=(4, 4))
         sns.heatmap(conf_mat, annot=True, fmt=".2f", cmap="Reds", cbar=False)
-        plt.title(f"{class_names[0]}")
+        plt.title(f"Confusion Matrix")
         plt.xlabel("Predicted Class")
         plt.ylabel("True Class")
         plt.tight_layout()
         plt.show()
     else:
-        # For multilabel classification, conf_mat is (num_labels, 2, 2)
+        # For multilabel or multiclass classification
         num_labels = conf_mat.shape[0]
+        if conf_mat.shape[1:] != (2, 2):
+            raise ValueError("For multilabel or multiclass task, conf_mat must have shape (num_labels, 2, 2).")
+        if len(class_names) != num_labels:
+            raise ValueError("Length of class_names must match number of labels in conf_mat.")
 
         # Determine grid size based on the number of classes
         n_cols = int(np.ceil(np.sqrt(num_labels)))
         n_rows = int(np.ceil(num_labels / n_cols))
 
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2, n_rows * 2))
-        axes = axes.flatten()  # Flatten the axes array for easy indexing
+
+        # Flatten the axes array for easy indexing
+        if num_labels == 1:
+            axes = [axes]
+        else:
+            axes = axes.flatten()
 
         for i in range(num_labels):
             cm = conf_mat[i]

@@ -11,8 +11,11 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from bapat.assessment import metrics
-from bapat.assessment import plotting
+# from bapat.assessment import metrics
+# from bapat.assessment import plotting
+
+from assessment import metrics
+from assessment import plotting
 
 
 class PerformanceAssessor:
@@ -63,7 +66,12 @@ class PerformanceAssessor:
             if not all(isinstance(class_name, str) for class_name in classes):
                 raise ValueError("All elements in classes must be strings.")
 
+        if task not in {"binary", "multilabel"}:
+            raise ValueError("task must be 'binary' or 'multilabel'.")
+
         valid_metrics = {"accuracy", "recall", "precision", "f1", "ap", "auroc"}
+        if not metrics_list:
+            raise ValueError("metrics_list cannot be empty.")
         if not all(metric in valid_metrics for metric in metrics_list):
             raise ValueError(
                 f"Some metrics in {metrics_list} are not supported. Valid options are {valid_metrics}."
@@ -95,6 +103,20 @@ class PerformanceAssessor:
         Returns:
             pd.DataFrame: A DataFrame containing the computed metrics.
         """
+        # Input validation
+        if not isinstance(predictions, np.ndarray):
+            raise TypeError("predictions must be a NumPy array.")
+        if not isinstance(labels, np.ndarray):
+            raise TypeError("labels must be a NumPy array.")
+        if predictions.shape != labels.shape:
+            raise ValueError("predictions and labels must have the same shape.")
+        if predictions.ndim != 2:
+            raise ValueError("predictions and labels must be 2-dimensional arrays.")
+        if predictions.shape[1] != self.num_classes:
+            raise ValueError(
+                f"The number of columns in predictions ({predictions.shape[1]}) must match num_classes ({self.num_classes})."
+            )
+
         # Determine the averaging method
         if per_class_metrics and self.num_classes == 1:
             averaging_method = "macro"
@@ -183,7 +205,6 @@ class PerformanceAssessor:
             predictions (np.ndarray): Model output predictions as a NumPy array.
             labels (np.ndarray): Ground truth labels as a NumPy array.
             per_class_metrics (bool): If True, plots metrics for each class individually.
-            cmap (str): Name of the colormap to be used.
         """
         metrics_df = self.calculate_metrics(predictions, labels, per_class_metrics)
 
@@ -205,7 +226,6 @@ class PerformanceAssessor:
             predictions (np.ndarray): Model output predictions as a NumPy array.
             labels (np.ndarray): Ground truth labels as a NumPy array.
             per_class_metrics (bool): If True, plots metrics for each class individually.
-            cmap (str): Name of the colormap to be used.
         """
         original_threshold = self.threshold
         thresholds = np.arange(0.05, 1.0, 0.05)
@@ -282,11 +302,24 @@ class PerformanceAssessor:
             predictions (np.ndarray): Model output predictions as a NumPy array.
             labels (np.ndarray): Ground truth labels as a NumPy array.
         """
+        # Input validation
+        if not isinstance(predictions, np.ndarray):
+            raise TypeError("predictions must be a NumPy array.")
+        if not isinstance(labels, np.ndarray):
+            raise TypeError("labels must be a NumPy array.")
+        if predictions.shape != labels.shape:
+            raise ValueError("predictions and labels must have the same shape.")
+        if predictions.ndim != 2:
+            raise ValueError("predictions and labels must be 2-dimensional arrays.")
+        if predictions.shape[1] != self.num_classes:
+            raise ValueError(
+                f"The number of columns in predictions ({predictions.shape[1]}) must match num_classes ({self.num_classes})."
+            )
 
         if self.task == "binary":
             # Apply threshold to get predicted class labels
             y_pred = (predictions >= self.threshold).astype(int).flatten()
-            y_true = labels.flatten()
+            y_true = labels.astype(int).flatten()
             # Compute normalized confusion matrix
             conf_mat = confusion_matrix(y_true, y_pred, normalize="true")
             conf_mat = np.round(conf_mat, 2)  # Round to 2 decimals
@@ -304,7 +337,7 @@ class PerformanceAssessor:
         elif self.task == "multilabel":
             # Apply threshold to get predicted class labels
             y_pred = (predictions >= self.threshold).astype(int)
-            y_true = labels
+            y_true = labels.astype(int)
             # Compute confusion matrices for each class
             conf_mats = []
             class_names = (

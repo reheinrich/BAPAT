@@ -1,6 +1,6 @@
-"""
-metrics.py
+# metrics.py
 
+"""
 Module containing functions to calculate various performance metrics using scikit-learn.
 """
 
@@ -27,6 +27,14 @@ def calculate_accuracy(
     """
     Calculate accuracy for the given predictions and labels.
     """
+    # Input validation
+    if predictions.size == 0 or labels.size == 0:
+        raise ValueError("Predictions and labels must not be empty.")
+    if not 0 <= threshold <= 1:
+        raise ValueError(f"Invalid threshold: {threshold}. Must be between 0 and 1.")
+    if predictions.shape != labels.shape:
+        raise ValueError("Predictions and labels must have the same shape.")
+
     if task == "binary":
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
@@ -38,7 +46,7 @@ def calculate_accuracy(
         if averaging_method == "micro":
             correct = (y_pred == y_true).sum()
             total = y_true.size
-            acc = correct / total
+            acc = correct / total if total > 0 else np.nan
             acc = np.array([acc])
         elif averaging_method == "macro":
             accuracies = []
@@ -54,9 +62,12 @@ def calculate_accuracy(
                 acc_i = accuracy_score(y_true[:, i], y_pred[:, i])
                 accuracies.append(acc_i)
                 weights.append(np.sum(y_true[:, i]))
-            acc = np.average(accuracies, weights=weights)
-            acc = np.array([acc])
-        elif averaging_method is None:
+            if sum(weights) == 0:
+                acc = np.array([0.0])
+            else:
+                acc = np.average(accuracies, weights=weights)
+                acc = np.array([acc])
+        elif averaging_method in [None, "none"]:
             accuracies = []
             for i in range(num_classes):
                 acc_i = accuracy_score(y_true[:, i], y_pred[:, i])
@@ -76,22 +87,35 @@ def calculate_recall(
     task: Literal["binary", "multilabel"],
     threshold: float,
     averaging_method: Optional[
-        Literal["micro", "macro", "weighted", "samples", "none"]
-    ] = "macro",
+        Literal["binary", "micro", "macro", "weighted", "samples", "none"]
+    ] = None,
 ) -> np.ndarray:
     """
     Calculate recall for the given predictions and labels.
     """
-    averaging = None if averaging_method == "none" else averaging_method
+    # Input validation
+    if predictions.size == 0 or labels.size == 0:
+        raise ValueError("Predictions and labels must not be empty.")
+    if not 0 <= threshold <= 1:
+        raise ValueError(f"Invalid threshold: {threshold}. Must be between 0 and 1.")
+    if predictions.shape != labels.shape:
+        raise ValueError("Predictions and labels must have the same shape.")
+
+    if averaging_method == "none":
+        averaging = None
+    else:
+        averaging = averaging_method
 
     if task == "binary":
+        if averaging is None:
+            averaging = "binary"  # Use 'binary' averaging for binary classification
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
-        recall = recall_score(y_true, y_pred, average=averaging)
+        recall = recall_score(y_true, y_pred, average=averaging, zero_division=0)
     elif task == "multilabel":
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
-        recall = recall_score(y_true, y_pred, average=averaging)
+        recall = recall_score(y_true, y_pred, average=averaging, zero_division=0)
     else:
         raise ValueError(f"Unsupported task type: {task}")
 
@@ -107,22 +131,37 @@ def calculate_precision(
     task: Literal["binary", "multilabel"],
     threshold: float,
     averaging_method: Optional[
-        Literal["micro", "macro", "weighted", "samples", "none"]
-    ] = "macro",
+        Literal["binary", "micro", "macro", "weighted", "samples", "none"]
+    ] = None,
 ) -> np.ndarray:
     """
     Calculate precision for the given predictions and labels.
     """
-    averaging = None if averaging_method == "none" else averaging_method
+    # Input validation
+    if predictions.size == 0 or labels.size == 0:
+        raise ValueError("Predictions and labels must not be empty.")
+    if not 0 <= threshold <= 1:
+        raise ValueError(f"Invalid threshold: {threshold}. Must be between 0 and 1.")
+    if predictions.shape != labels.shape:
+        raise ValueError("Predictions and labels must have the same shape.")
+
+    if averaging_method == "none":
+        averaging = None
+    else:
+        averaging = averaging_method
 
     if task == "binary":
+        if averaging is None:
+            averaging = "binary"
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
-        precision = precision_score(y_true, y_pred, average=averaging)
+        precision = precision_score(y_true, y_pred, average=averaging, zero_division=0)
     elif task == "multilabel":
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
-        precision = precision_score(y_true, y_pred, average=averaging)
+        precision = precision_score(
+            y_true, y_pred, average=averaging, zero_division=0
+        )
     else:
         raise ValueError(f"Unsupported task type: {task}")
 
@@ -138,22 +177,35 @@ def calculate_f1_score(
     task: Literal["binary", "multilabel"],
     threshold: float,
     averaging_method: Optional[
-        Literal["micro", "macro", "weighted", "samples", "none"]
-    ] = "macro",
+        Literal["binary", "micro", "macro", "weighted", "samples", "none"]
+    ] = None,
 ) -> np.ndarray:
     """
     Calculate the F1 score for the given predictions and labels.
     """
-    averaging = None if averaging_method == "none" else averaging_method
+    # Input validation
+    if predictions.size == 0 or labels.size == 0:
+        raise ValueError("Predictions and labels must not be empty.")
+    if not 0 <= threshold <= 1:
+        raise ValueError(f"Invalid threshold: {threshold}. Must be between 0 and 1.")
+    if predictions.shape != labels.shape:
+        raise ValueError("Predictions and labels must have the same shape.")
+
+    if averaging_method == "none":
+        averaging = None
+    else:
+        averaging = averaging_method
 
     if task == "binary":
+        if averaging is None:
+            averaging = "binary"
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
-        f1 = f1_score(y_true, y_pred, average=averaging)
+        f1 = f1_score(y_true, y_pred, average=averaging, zero_division=0)
     elif task == "multilabel":
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
-        f1 = f1_score(y_true, y_pred, average=averaging)
+        f1 = f1_score(y_true, y_pred, average=averaging, zero_division=0)
     else:
         raise ValueError(f"Unsupported task type: {task}")
 
@@ -169,11 +221,17 @@ def calculate_average_precision(
     task: Literal["binary", "multilabel"],
     averaging_method: Optional[
         Literal["micro", "macro", "weighted", "samples", "none"]
-    ] = "macro",
+    ] = None,
 ) -> np.ndarray:
     """
     Calculate the average precision (AP) for the given predictions and labels.
     """
+    # Input validation
+    if predictions.size == 0 or labels.size == 0:
+        raise ValueError("Predictions and labels must not be empty.")
+    if predictions.shape != labels.shape:
+        raise ValueError("Predictions and labels must have the same shape.")
+
     averaging = None if averaging_method == "none" else averaging_method
 
     if task == "binary":
@@ -204,6 +262,12 @@ def calculate_auroc(
     """
     Calculate the Area Under the Receiver Operating Characteristic curve (AUROC) for the given predictions and labels.
     """
+    # Input validation
+    if predictions.size == 0 or labels.size == 0:
+        raise ValueError("Predictions and labels must not be empty.")
+    if predictions.shape != labels.shape:
+        raise ValueError("Predictions and labels must have the same shape.")
+
     # Initialize averaging based on the averaging_method
     averaging = None if averaging_method == "none" else averaging_method
 
@@ -221,8 +285,10 @@ def calculate_auroc(
     except ValueError as e:
         # Catch specific error related to one class present in y_true
         if "Only one class present in y_true" in str(e):
-            print("Warning: Only one class present in y_true. Returning NaN for AUROC.")
-            return np.array([np.nan])
+            # Return NaN for AUROC when only one class is present
+            auroc = np.nan
+        elif "Number of classes in y_true" in str(e):
+            auroc = np.nan
         else:
             # Re-raise other unexpected exceptions
             raise
