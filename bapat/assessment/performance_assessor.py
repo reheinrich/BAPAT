@@ -233,7 +233,7 @@ class PerformanceAssessor:
 
         if per_class_metrics:
             class_names = (
-                self.classes
+                list(self.classes)
                 if self.classes
                 else [f"Class {i}" for i in range(self.num_classes)]
             )
