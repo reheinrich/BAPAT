@@ -1,9 +1,3 @@
-# test_metrics.py
-
-"""
-Unit tests for the metrics module functions.
-"""
-
 import pytest
 import numpy as np
 from bapat.assessment.metrics import (
@@ -488,7 +482,10 @@ class TestCalculatePrecision:
             averaging_method="weighted",
         )
         expected_precision = precision_score(
-            labels, (predictions >= 0.5).astype(int), average="weighted", zero_division=0
+            labels,
+            (predictions >= 0.5).astype(int),
+            average="weighted",
+            zero_division=0,
         )
         assert np.isclose(result, expected_precision)
 
@@ -646,7 +643,10 @@ class TestCalculateF1Score:
             averaging_method="weighted",
         )
         expected_f1 = f1_score(
-            labels, (predictions >= 0.5).astype(int), average="weighted", zero_division=0
+            labels,
+            (predictions >= 0.5).astype(int),
+            average="weighted",
+            zero_division=0,
         )
         assert np.isclose(result, expected_f1)
 
@@ -756,9 +756,7 @@ class TestCalculateAveragePrecision:
             task="multilabel",
             averaging_method="macro",
         )
-        expected_ap = average_precision_score(
-            labels, predictions, average="macro"
-        )
+        expected_ap = average_precision_score(labels, predictions, average="macro")
         assert np.isclose(result, expected_ap)
 
     def test_incorrect_shapes(self):

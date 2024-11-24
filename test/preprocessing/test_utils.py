@@ -1,25 +1,3 @@
-"""
-Test module for utility functions used in data processing.
-
-This module contains a series of pytest functions that test three main utility functions
-from the `bapat.preprocessing.utils` module: `extract_recording_filename`,
-`extract_recording_filename_from_filename`, and `read_and_concatenate_files_in_directory`.
-
-These functions are responsible for:
-1. Extracting the base filename from a given path or filename.
-2. Reading and concatenating `.txt` files from a directory into a single pandas DataFrame.
-
-Test cases include:
-- Handling of various filename formats (with/without extensions, multiple dots, slashes, etc.).
-- Ensuring that `None` and `NaN` values are handled appropriately.
-- Concatenating files with different structures and encodings.
-- Checking the behavior of the functions in edge cases like empty directories, invalid paths, and large files.
-
-Each test function uses `pytest` assertions to verify that the expected output matches
-the actual function behavior, ensuring that the utility functions work correctly across
-a wide range of inputs and conditions.
-"""
-
 import numpy as np
 import pandas as pd
 import pytest
