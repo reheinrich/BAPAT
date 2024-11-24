@@ -34,7 +34,7 @@ jobs:
           --clean \
           --specpath . \
           --target-arch x86_64 \
-          --collect-all sklearn
+          --collect-binaries sklearn
 
     - name: Compress the app
       run: |
