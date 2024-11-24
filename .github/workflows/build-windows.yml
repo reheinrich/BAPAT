@@ -24,14 +24,23 @@ jobs:
         pip install -r requirements.txt
 
     - name: Find vcomp140.dll and set environment variable
+      shell: pwsh
       run: |
-        python -c "import sklearn, os; dll_path = os.path.join(os.path.dirname(sklearn.__file__), '.libs', 'vcomp140.dll'); print(f'vcomp140.dll path: {dll_path}'); f = open(os.environ['GITHUB_ENV'], 'a'); f.write(f'VCOMP140_DLL_PATH={dll_path}\n'); f.close()"
+        # Use Python to find the DLL path
+        $dll_path = python -c "import sklearn, os; print(os.path.join(os.path.dirname(sklearn.__file__), '.libs', 'vcomp140.dll'))"
+        
+        # Output the path for debugging
+        Write-Output "vcomp140.dll path: $dll_path"
+        
+        # Set the environment variable by appending to GITHUB_ENV
+        "VCOMP140_DLL_PATH=$dll_path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Build executable with PyInstaller
       working-directory: bapat
+      shell: pwsh
       run: |
-        echo %VCOMP140_DLL_PATH%
-        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.ico --clean --specpath . --collect-all sklearn --add-binary "%VCOMP140_DLL_PATH%;sklearn\\.libs"
+        Write-Output "Using VCOMP140_DLL_PATH: $env:VCOMP140_DLL_PATH"
+        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.ico --clean --specpath . --collect-all sklearn --add-binary "$env:VCOMP140_DLL_PATH;sklearn\.libs"
 
     - name: Upload executable
       uses: actions/upload-artifact@v3
