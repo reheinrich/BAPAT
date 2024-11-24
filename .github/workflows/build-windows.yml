@@ -40,7 +40,7 @@ jobs:
       shell: pwsh
       run: |
         Write-Output "Using VCOMP140_DLL_PATH: $env:VCOMP140_DLL_PATH"
-        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.ico --clean --specpath . --collect-all sklearn --add-binary "$env:VCOMP140_DLL_PATH;sklearn\.libs"
+        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.ico --clean --specpath . --collect-all sklearn --add-binary "$env:VCOMP140_DLL_PATH;sklearn/.libs"
 
     - name: Upload executable
       uses: actions/upload-artifact@v3
