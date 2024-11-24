@@ -39,7 +39,7 @@ jobs:
       working-directory: bapat
       shell: pwsh
       run: |
-        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.ico --clean --specpath . --collect-binaries sklearn --add-data "$env:SKLEARN_LIBS_PATH;sklearn\.libs"
+        pyinstaller app.py --name PerformanceApp --onedir --windowed --icon=app.ico --clean --specpath . --collect-binaries sklearn --add-data "$env:SKLEARN_LIBS_PATH:sklearn\.libs"
 
     - name: Upload executable
       uses: actions/upload-artifact@v3
