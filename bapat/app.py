@@ -37,7 +37,7 @@ from PySide6.QtGui import (
     QStandardItemModel,
 )
 
-from core import process_data
+from bapat.core import process_data
 
 matplotlib.use("QtAgg")  # Set the Matplotlib backend to QtAgg
 
