@@ -33,8 +33,7 @@ jobs:
           --icon=app.icns \
           --clean \
           --specpath . \
-          --target-arch x86_64 \
-          --collect-all sklearn
+          --target-arch x86_64
 
     - name: Compress the app
       run: |

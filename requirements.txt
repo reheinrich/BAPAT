@@ -2,6 +2,6 @@ PySide6==6.7.2
 matplotlib==3.9.2
 numpy==2.1.1
 pandas==2.2.2
-pyinstaller==6.10.0
+pyinstaller==6.11.1
 scikit-learn==1.5.2
 seaborn==0.13.2
