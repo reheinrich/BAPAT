@@ -1,29 +1,56 @@
-# performance_core.py
+"""
+Core script for assessing performance of prediction models against annotated data.
+
+This script uses the `DataProcessor` and `PerformanceAssessor` classes to process prediction and
+annotation data, compute metrics, and optionally generate plots. It supports flexible configurations
+for columns, class mappings, and filtering based on selected classes or recordings.
+"""
 
 import argparse
 import json
 import os
+from typing import Optional, Dict, List, Tuple
 
-# Import DataProcessor and PerformanceAssessor
 from preprocessing.data_processor import DataProcessor
 from assessment.performance_assessor import PerformanceAssessor
 
 
 def process_data(
-    annotation_path,
-    prediction_path,
-    mapping_path=None,
-    sample_duration=3.0,
-    min_overlap=0.5,
-    recording_duration=None,
-    columns_annotations=None,
-    columns_predictions=None,
-    selected_classes=None,
-    selected_recordings=None,
-    metrics_list=('accuracy', 'precision', 'recall'),
-    threshold=0.1,
-    class_wise=False
-):
+    annotation_path: str,
+    prediction_path: str,
+    mapping_path: Optional[str] = None,
+    sample_duration: float = 3.0,
+    min_overlap: float = 0.5,
+    recording_duration: Optional[float] = None,
+    columns_annotations: Optional[Dict[str, str]] = None,
+    columns_predictions: Optional[Dict[str, str]] = None,
+    selected_classes: Optional[List[str]] = None,
+    selected_recordings: Optional[List[str]] = None,
+    metrics_list: Tuple[str, ...] = ('accuracy', 'precision', 'recall'),
+    threshold: float = 0.1,
+    class_wise: bool = False
+) -> Tuple:
+    """
+    Processes data, computes metrics, and prepares the performance assessment pipeline.
+
+    Args:
+        annotation_path (str): Path to the annotation file or folder.
+        prediction_path (str): Path to the prediction file or folder.
+        mapping_path (Optional[str]): Path to the class mapping JSON file, if applicable.
+        sample_duration (float): Duration of each sample interval in seconds.
+        min_overlap (float): Minimum overlap required between predictions and annotations.
+        recording_duration (Optional[float]): Total duration of the recordings, if known.
+        columns_annotations (Optional[Dict[str, str]]): Custom column mappings for annotations.
+        columns_predictions (Optional[Dict[str, str]]): Custom column mappings for predictions.
+        selected_classes (Optional[List[str]]): List of classes to include in the analysis.
+        selected_recordings (Optional[List[str]]): List of recordings to include in the analysis.
+        metrics_list (Tuple[str, ...]): Metrics to compute for performance assessment.
+        threshold (float): Confidence threshold for predictions.
+        class_wise (bool): Whether to calculate metrics on a per-class basis.
+
+    Returns:
+        Tuple: Metrics DataFrame, `PerformanceAssessor` object, predictions tensor, labels tensor.
+    """
     # Load class mapping if provided
     if mapping_path:
         with open(mapping_path, 'r') as f:
@@ -31,20 +58,19 @@ def process_data(
     else:
         class_mapping = None
 
-    # Check if the paths refer to files or directories
+    # Determine directory and file paths for annotations and predictions
     annotation_dir, annotation_file = (
         (os.path.dirname(annotation_path), os.path.basename(annotation_path))
         if os.path.isfile(annotation_path)
         else (annotation_path, None)
     )
-
     prediction_dir, prediction_file = (
         (os.path.dirname(prediction_path), os.path.basename(prediction_path))
         if os.path.isfile(prediction_path)
         else (prediction_path, None)
     )
 
-    # Initialize DataProcessor
+    # Initialize the DataProcessor to handle and prepare data
     processor = DataProcessor(
         prediction_directory_path=prediction_dir,
         prediction_file_name=prediction_file,
@@ -58,23 +84,25 @@ def process_data(
         recording_duration=recording_duration,
     )
 
-    # Get available classes and recordings
+    # Get the available classes and recordings
     available_classes = processor.classes
     available_recordings = processor.samples_df['filename'].unique().tolist()
 
-    # If selected_classes or selected_recordings are None, select all
+    # Default to all classes or recordings if none are specified
     if selected_classes is None:
         selected_classes = available_classes
     if selected_recordings is None:
         selected_recordings = available_recordings
 
-    # Get predictions and labels
-    predictions, labels, classes = processor.get_filtered_tensors(selected_classes, selected_recordings)
+    # Retrieve predictions and labels tensors for the selected classes and recordings
+    predictions, labels, classes = processor.get_filtered_tensors(
+        selected_classes, selected_recordings
+    )
 
     num_classes = len(classes)
     task = 'binary' if num_classes == 1 else 'multilabel'
 
-    # Initialize PerformanceAssessor
+    # Initialize the PerformanceAssessor for computing metrics
     pa = PerformanceAssessor(
         num_classes=num_classes,
         threshold=threshold,
@@ -83,16 +111,18 @@ def process_data(
         metrics_list=metrics_list,
     )
 
-    # Calculate metrics
+    # Compute performance metrics
     metrics_df = pa.calculate_metrics(predictions, labels, per_class_metrics=class_wise)
 
     return metrics_df, pa, predictions, labels
 
 
 def main():
-    # Command-line interface to call process_data
+    """
+    Entry point for the script. Parses command-line arguments and orchestrates the performance assessment pipeline.
+    """
+    # Set up argument parsing
     parser = argparse.ArgumentParser(description='Performance Assessor Core Script')
-    # Add arguments
     parser.add_argument('--annotation_path', required=True, help='Path to annotation file or folder')
     parser.add_argument('--prediction_path', required=True, help='Path to prediction file or folder')
     parser.add_argument('--mapping_path', help='Path to class mapping JSON file (optional)')
@@ -111,8 +141,10 @@ def main():
     parser.add_argument('--plot_metrics_all_thresholds', action='store_true', help='Plot metrics for all thresholds')
     parser.add_argument('--output_dir', help='Directory to save plots')
 
+    # Parse arguments
     args = parser.parse_args()
 
+    # Process data and compute metrics
     metrics_df, pa, predictions, labels = process_data(
         annotation_path=args.annotation_path,
         prediction_path=args.prediction_path,
@@ -129,11 +161,14 @@ def main():
         class_wise=args.class_wise
     )
 
+    # Display the computed metrics
     print(metrics_df)
 
+    # Create output directory if needed
     if args.output_dir and not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
+    # Generate plots if specified
     if args.plot_metrics:
         pa.plot_metrics(predictions, labels, per_class_metrics=args.class_wise)
         if args.output_dir:
