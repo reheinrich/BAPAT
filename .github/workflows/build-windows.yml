@@ -25,7 +25,7 @@ jobs:
 
     - name: Find vcomp140.dll and set environment variable
       run: |
-        python -c "import sklearn, os; dll_path = os.path.join(os.path.dirname(sklearn.__file__), '.libs', 'vcomp140.dll'); print(f'vcomp140.dll path: {dll_path}'); with open(os.environ['GITHUB_ENV'], 'a') as f: f.write(f'VCOMP140_DLL_PATH={dll_path}\n')"
+        python -c "import sklearn, os; dll_path = os.path.join(os.path.dirname(sklearn.__file__), '.libs', 'vcomp140.dll'); print(f'vcomp140.dll path: {dll_path}'); f = open(os.environ['GITHUB_ENV'], 'a'); f.write(f'VCOMP140_DLL_PATH={dll_path}\n'); f.close()"
 
     - name: Build executable with PyInstaller
       working-directory: bapat
