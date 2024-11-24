@@ -4,6 +4,14 @@ Module containing functions to calculate various performance metrics using sciki
 This script includes implementations for calculating accuracy, precision, recall, F1 score,
 average precision, and AUROC for binary and multilabel classification tasks. It supports
 various averaging methods and thresholds for predictions.
+
+Functions:
+    - calculate_accuracy: Computes accuracy for binary or multilabel classification.
+    - calculate_recall: Computes recall for binary or multilabel classification.
+    - calculate_precision: Computes precision for binary or multilabel classification.
+    - calculate_f1_score: Computes the F1 score for binary or multilabel classification.
+    - calculate_average_precision: Computes the average precision score (AP).
+    - calculate_auroc: Computes the Area Under the Receiver Operating Characteristic curve (AUROC).
 """
 
 from typing import Optional, Literal
@@ -44,6 +52,7 @@ def calculate_accuracy(
     Raises:
         ValueError: If inputs are invalid or unsupported task/averaging method is specified.
     """
+    # Input validation for predictions, labels, and threshold
     if predictions.size == 0 or labels.size == 0:
         raise ValueError("Predictions and labels must not be empty.")
     if not 0 <= threshold <= 1:
@@ -51,23 +60,28 @@ def calculate_accuracy(
     if predictions.shape != labels.shape:
         raise ValueError("Predictions and labels must have the same shape.")
 
+    # Handle binary and multilabel tasks separately
     if task == "binary":
+        # Binary classification: Binarize predictions and compute accuracy
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
         acc = accuracy_score(y_true, y_pred)
         acc = np.array([acc])
 
     elif task == "multilabel":
+        # Multilabel classification: Handle based on the specified averaging method
         y_pred = (predictions >= threshold).astype(int)
         y_true = labels.astype(int)
 
         if averaging_method == "micro":
+            # Micro-averaging: Overall accuracy across all labels
             correct = (y_pred == y_true).sum()
             total = y_true.size
             acc = correct / total if total > 0 else np.nan
             acc = np.array([acc])
 
         elif averaging_method == "macro":
+            # Macro-averaging: Compute accuracy per class and take the mean
             accuracies = [
                 accuracy_score(y_true[:, i], y_pred[:, i]) for i in range(num_classes)
             ]
@@ -75,6 +89,7 @@ def calculate_accuracy(
             acc = np.array([acc])
 
         elif averaging_method == "weighted":
+            # Weighted averaging: Weight class accuracies by class prevalence
             accuracies, weights = [], []
             for i in range(num_classes):
                 accuracies.append(accuracy_score(y_true[:, i], y_pred[:, i]))
@@ -87,13 +102,16 @@ def calculate_accuracy(
             acc = np.array([acc])
 
         elif averaging_method in [None, "none"]:
+            # No averaging: Return accuracy per class
             acc = np.array(
                 [accuracy_score(y_true[:, i], y_pred[:, i]) for i in range(num_classes)]
             )
 
         else:
+            # Unsupported averaging method
             raise ValueError(f"Invalid averaging method: {averaging_method}")
     else:
+        # Unsupported task type
         raise ValueError(f"Unsupported task type: {task}")
 
     return acc
@@ -125,6 +143,7 @@ def calculate_recall(
     Raises:
         ValueError: If inputs are invalid or unsupported task type is specified.
     """
+    # Validate inputs for size, threshold, and shape
     if predictions.size == 0 or labels.size == 0:
         raise ValueError("Predictions and labels must not be empty.")
     if not 0 <= threshold <= 1:
@@ -132,8 +151,10 @@ def calculate_recall(
     if predictions.shape != labels.shape:
         raise ValueError("Predictions and labels must have the same shape.")
 
+    # Adjust averaging method for scikit-learn if none is specified
     averaging = None if averaging_method == "none" else averaging_method
 
+    # Compute recall based on task type
     if task == "binary":
         averaging = averaging or "binary"
         y_pred = (predictions >= threshold).astype(int)
@@ -146,8 +167,10 @@ def calculate_recall(
         recall = recall_score(y_true, y_pred, average=averaging, zero_division=0)
 
     else:
+        # Unsupported task type
         raise ValueError(f"Unsupported task type: {task}")
 
+    # Ensure return type is consistent
     if isinstance(recall, np.ndarray):
         return recall
     return np.array([recall])
@@ -179,6 +202,7 @@ def calculate_precision(
     Raises:
         ValueError: If inputs are invalid or unsupported task type is specified.
     """
+    # Validate inputs for size, threshold, and shape
     if predictions.size == 0 or labels.size == 0:
         raise ValueError("Predictions and labels must not be empty.")
     if not 0 <= threshold <= 1:
@@ -186,8 +210,10 @@ def calculate_precision(
     if predictions.shape != labels.shape:
         raise ValueError("Predictions and labels must have the same shape.")
 
+    # Adjust averaging method for scikit-learn if none is specified
     averaging = None if averaging_method == "none" else averaging_method
 
+    # Compute precision based on task type
     if task == "binary":
         averaging = averaging or "binary"
         y_pred = (predictions >= threshold).astype(int)
@@ -200,8 +226,10 @@ def calculate_precision(
         precision = precision_score(y_true, y_pred, average=averaging, zero_division=0)
 
     else:
+        # Unsupported task type
         raise ValueError(f"Unsupported task type: {task}")
 
+    # Ensure return type is consistent
     if isinstance(precision, np.ndarray):
         return precision
     return np.array([precision])
@@ -233,6 +261,7 @@ def calculate_f1_score(
     Raises:
         ValueError: If inputs are invalid or unsupported task type is specified.
     """
+    # Validate inputs for size, threshold, and shape
     if predictions.size == 0 or labels.size == 0:
         raise ValueError("Predictions and labels must not be empty.")
     if not 0 <= threshold <= 1:
@@ -240,8 +269,10 @@ def calculate_f1_score(
     if predictions.shape != labels.shape:
         raise ValueError("Predictions and labels must have the same shape.")
 
+    # Adjust averaging method for scikit-learn if none is specified
     averaging = None if averaging_method == "none" else averaging_method
 
+    # Compute F1 score based on task type
     if task == "binary":
         averaging = averaging or "binary"
         y_pred = (predictions >= threshold).astype(int)
@@ -254,8 +285,10 @@ def calculate_f1_score(
         f1 = f1_score(y_true, y_pred, average=averaging, zero_division=0)
 
     else:
+        # Unsupported task type
         raise ValueError(f"Unsupported task type: {task}")
 
+    # Ensure return type is consistent
     if isinstance(f1, np.ndarray):
         return f1
     return np.array([f1])
@@ -285,13 +318,16 @@ def calculate_average_precision(
     Raises:
         ValueError: If inputs are invalid or unsupported task type is specified.
     """
+    # Validate inputs for size and shape
     if predictions.size == 0 or labels.size == 0:
         raise ValueError("Predictions and labels must not be empty.")
     if predictions.shape != labels.shape:
         raise ValueError("Predictions and labels must have the same shape.")
 
+    # Adjust averaging method for scikit-learn if none is specified
     averaging = None if averaging_method == "none" else averaging_method
 
+    # Compute average precision based on task type
     if task == "binary":
         y_true = labels.astype(int)
         y_scores = predictions
@@ -303,8 +339,10 @@ def calculate_average_precision(
         ap = average_precision_score(y_true, y_scores, average=averaging)
 
     else:
+        # Unsupported task type
         raise ValueError(f"Unsupported task type for average precision: {task}")
 
+    # Ensure return type is consistent
     if isinstance(ap, np.ndarray):
         return ap
     return np.array([ap])
@@ -334,14 +372,17 @@ def calculate_auroc(
     Raises:
         ValueError: If inputs are invalid or unsupported task type is specified.
     """
+    # Validate inputs for size and shape
     if predictions.size == 0 or labels.size == 0:
         raise ValueError("Predictions and labels must not be empty.")
     if predictions.shape != labels.shape:
         raise ValueError("Predictions and labels must have the same shape.")
 
+    # Adjust averaging method for scikit-learn if none is specified
     averaging = None if averaging_method == "none" else averaging_method
 
     try:
+        # Compute AUROC based on task type
         if task == "binary":
             y_true = labels.astype(int)
             y_scores = predictions
@@ -353,9 +394,11 @@ def calculate_auroc(
             auroc = roc_auc_score(y_true, y_scores, average=averaging)
 
         else:
+            # Unsupported task type
             raise ValueError(f"Unsupported task type: {task}")
 
     except ValueError as e:
+        # Handle edge cases where AUROC cannot be computed
         if "Only one class present in y_true" in str(e):
             auroc = np.nan
         elif "Number of classes in y_true" in str(e):
@@ -363,6 +406,7 @@ def calculate_auroc(
         else:
             raise
 
+    # Ensure return type is consistent
     if isinstance(auroc, np.ndarray):
         return auroc
     return np.array([auroc])
